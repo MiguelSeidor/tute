@@ -11,6 +11,35 @@ import { GameError } from "./engine/tuteTypes";
 import { puedeJugar } from "./engine/tuteLogic";
 import Simulador4 from "./ui/Simulador4";
 
+// ========================== FRASES BOCADILLOS ==========================
+
+const FRASES_RANDOM = [
+  "De ningún cobarde se escribe ná",
+  "Hasta el rabo todo es toro",
+  "Quien más chifle, capador",
+  "A cojones vistos, macho seguro",
+  "El culo por un zarzal",
+  "Arriero somos",
+  "La habéis pillao gorda",
+  "Achiquemán",
+];
+
+interface FraseCondicional {
+  texto: string;
+  condicion: "cante_40" | "cante_20_oros" | "cante_20_bastos" | "cante_20_copas" | "cante_20_espadas";
+  quien: "cantante";
+}
+
+const FRASES_CONDICIONALES: FraseCondicional[] = [
+  { texto: "¡Las cuacuá!", condicion: "cante_40", quien: "cantante" },
+  { texto: "¡Oremos!", condicion: "cante_20_oros", quien: "cantante" },
+  { texto: "¡En bastos!", condicion: "cante_20_bastos", quien: "cantante" },
+  { texto: "¡En copas!", condicion: "cante_20_copas", quien: "cantante" },
+  { texto: "¡En espadas!", condicion: "cante_20_espadas", quien: "cantante" },
+];
+
+const FRASE_RIVAL_CANTE = "No.. si tos cantaremos";
+
 export default function App_v2() {
   const [game, setGame] = useState<GameState>(() => {
     const randomDealer = Math.floor(Math.random() * 4) as Seat;
@@ -44,6 +73,21 @@ export default function App_v2() {
   const [showSim, setShowSim] = React.useState(false);
   const RESET_ON_REFRESH = true;
 
+  // === BOCADILLOS tipo cómic ===
+  const [bocadillos, setBocadillos] = useState<Record<Seat, { texto: string; key: number } | null>>({
+    0: null, 1: null, 2: null, 3: null
+  });
+  const bocadilloKeyRef = React.useRef(0);
+  const bocadilloLogLenRef = React.useRef(0);
+
+  function mostrarBocadillo(seat: Seat, texto: string) {
+    bocadilloKeyRef.current++;
+    const key = bocadilloKeyRef.current;
+    setBocadillos(prev => ({ ...prev, [seat]: { texto, key } }));
+    window.setTimeout(() => {
+      setBocadillos(prev => prev[seat]?.key === key ? { ...prev, [seat]: null } : prev);
+    }, 4000);
+  }
 
   React.useEffect(() => {
     // Derivamos última acción "visible" por jugador desde el log más reciente hacia atrás
@@ -124,6 +168,60 @@ export default function App_v2() {
   React.useEffect(() => {
     setBloqueaCantesEsteTurno(false);
   }, [game.turno, game.bazaN]);
+
+  // === BOCADILLO: frases random cada 10 segundos ===
+  React.useEffect(() => {
+    if (game.status !== "jugando") return;
+
+    const interval = window.setInterval(() => {
+      const candidates = game.activos.length > 0 ? game.activos : ([0, 1, 2, 3] as Seat[]);
+      const seat = candidates[Math.floor(Math.random() * candidates.length)];
+      const frase = FRASES_RANDOM[Math.floor(Math.random() * FRASES_RANDOM.length)];
+      mostrarBocadillo(seat, frase);
+    }, 20000);
+
+    return () => window.clearInterval(interval);
+  }, [game.status, game.activos]);
+
+  // === BOCADILLO: frases condicionales (cantes) ===
+  React.useEffect(() => {
+    const log = game.reoLog;
+    const prevLen = bocadilloLogLenRef.current;
+    bocadilloLogLenRef.current = log.length;
+
+    if (log.length <= prevLen) return;
+
+    for (let i = prevLen; i < log.length; i++) {
+      const e = log[i] as any;
+
+      if (e.t === "cante") {
+        const singer = e.seat as Seat;
+
+        // El cantante dice la frase del palo
+        if (e.puntos === 40) {
+          mostrarBocadillo(singer, "¡Las cuacuá!");
+        } else if (e.palo === "oros") {
+          mostrarBocadillo(singer, "¡Oremos!");
+        } else if (e.palo === "bastos") {
+          mostrarBocadillo(singer, "¡En bastos!");
+        } else if (e.palo === "copas") {
+          mostrarBocadillo(singer, "¡En copas!");
+        } else if (e.palo === "espadas") {
+          mostrarBocadillo(singer, "¡En espadas!");
+        }
+
+        // Un rival aleatorio reacciona con retraso
+        const rivals = game.activos.filter(s => s !== singer);
+        if (rivals.length > 0) {
+          const rival = rivals[Math.floor(Math.random() * rivals.length)];
+          window.setTimeout(() => {
+            mostrarBocadillo(rival, FRASE_RIVAL_CANTE);
+          }, 1500);
+        }
+        return;
+      }
+    }
+  }, [game.reoLog]);
 
   React.useEffect(() => {
     // Evitar reentradas
@@ -1164,6 +1262,54 @@ export default function App_v2() {
           border: 2px solid rgba(255, 140, 0, 0.6);
           text-shadow: 0 0 12px rgba(255, 140, 0, 0.5);
         }
+
+        /* === BOCADILLOS CÓMIC === */
+        @keyframes bocadillo-in {
+          from { opacity: 0; transform: translateX(-50%) scale(0.7); }
+          to   { opacity: 1; transform: translateX(-50%) scale(1); }
+        }
+        @keyframes bocadillo-out {
+          from { opacity: 1; }
+          to   { opacity: 0; }
+        }
+        .bocadillo {
+          position: absolute;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 20;
+          padding: 8px 16px;
+          border-radius: 18px;
+          background: #fff;
+          color: #222;
+          font-size: 14px;
+          font-weight: 700;
+          font-style: italic;
+          white-space: nowrap;
+          box-shadow: 0 3px 12px rgba(0,0,0,0.35);
+          pointer-events: none;
+          animation: bocadillo-in 300ms ease-out both;
+        }
+        .bocadillo::after {
+          content: "";
+          position: absolute;
+          left: 50%;
+          transform: translateX(-50%);
+          border: 8px solid transparent;
+        }
+        .bocadillo--above {
+          bottom: calc(100% + 10px);
+        }
+        .bocadillo--above::after {
+          top: 100%;
+          border-top-color: #fff;
+        }
+        .bocadillo--below {
+          top: calc(100% + 10px);
+        }
+        .bocadillo--below::after {
+          bottom: 100%;
+          border-bottom-color: #fff;
+        }
       `}</style>
 
       <div className="page">
@@ -1241,13 +1387,19 @@ export default function App_v2() {
             }}
           >
             {/* J3 ARRIBA (seat 2) */}
-            <div style={{ gridColumn: "2", gridRow: "1" }}>
+            <div style={{ gridColumn: "2", gridRow: "1", position: "relative" }}>
               <PlayerBox seat={2} game={game} send={send} revealAll={modoDestapado}/>
+              {bocadillos[2] && (
+                <div className="bocadillo bocadillo--below" key={bocadillos[2].key}>{bocadillos[2].texto}</div>
+              )}
             </div>
 
             {/* J2 IZQUIERDA (seat 1) */}
-            <div style={{ gridColumn: "1", gridRow: "2" }}>
+            <div style={{ gridColumn: "1", gridRow: "2", position: "relative" }}>
               <PlayerBox seat={1} game={game} send={send} revealAll={modoDestapado}/>
+              {bocadillos[1] && (
+                <div className="bocadillo bocadillo--above" key={bocadillos[1].key}>{bocadillos[1].texto}</div>
+              )}
             </div>
 
             {/* MESA CENTRO */}
@@ -1266,13 +1418,19 @@ export default function App_v2() {
             </div>
 
             {/* J4 DERECHA (seat 3) */}
-            <div style={{ gridColumn: "3", gridRow: "2" }}>
+            <div style={{ gridColumn: "3", gridRow: "2", position: "relative" }}>
               <PlayerBox seat={3} game={game} send={send} revealAll={modoDestapado}/>
+              {bocadillos[3] && (
+                <div className="bocadillo bocadillo--above" key={bocadillos[3].key}>{bocadillos[3].texto}</div>
+              )}
             </div>
 
             {/* J1 ABAJO (seat 0) */}
-            <div style={{ gridColumn: "2", gridRow: "3" }}>
+            <div style={{ gridColumn: "2", gridRow: "3", position: "relative" }}>
               <PlayerBox seat={0} game={game} send={send} revealAll={modoDestapado}/>
+              {bocadillos[0] && (
+                <div className="bocadillo bocadillo--above" key={bocadillos[0].key}>{bocadillos[0].texto}</div>
+              )}
             </div>
           </div>
           

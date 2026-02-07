@@ -29,7 +29,12 @@ export default function App_v2() {
 
   const aiBusyRef = React.useRef(false);
   const aiTimerRef = React.useRef<number | null>(null);
-    // Estado: última acción por seat (se actualiza al cambiar el log)
+
+  // === Anuncio visual (cantes, tute, ir a los dos) ===
+  const [anuncio, setAnuncio] = useState<{ texto: string; tipo: "cante" | "tute" | "irados" } | null>(null);
+  const anuncioLogLen = React.useRef(0);
+
+  // Estado: última acción por seat (se actualiza al cambiar el log)
   const [lastActionBySeat, setLastActionBySeat] = useState<Record<Seat, string>>({
     0: "", 1: "", 2: "", 3: ""
   });
@@ -38,6 +43,7 @@ export default function App_v2() {
   const [plannedDealer, setPlannedDealer] = useState<Seat | null>(null);
   const [showSim, setShowSim] = React.useState(false);
   const RESET_ON_REFRESH = true;
+
 
   React.useEffect(() => {
     // Derivamos última acción "visible" por jugador desde el log más reciente hacia atrás
@@ -71,7 +77,48 @@ export default function App_v2() {
     setLastActionBySeat(last as any);
   }, [game.reoLog, game.activos]);
 
-  React.useEffect(() => () => { if (aiTimerRef.current) window.clearTimeout(aiTimerRef.current); }, []);
+  // Detectar nuevos eventos de cante/tute/irADos para mostrar anuncio visual
+  React.useEffect(() => {
+    const log = game.reoLog;
+    const prevLen = anuncioLogLen.current;
+    anuncioLogLen.current = log.length;
+
+    if (log.length <= prevLen) return; // no hay eventos nuevos
+
+    // Buscar en los eventos nuevos
+    for (let i = prevLen; i < log.length; i++) {
+      const e = log[i] as any;
+      if (e.t === "tute") {
+        const kind = e.kind === "reyes" ? "4 Reyes" : "4 Caballos";
+        setAnuncio({ texto: `J${e.seat + 1} canta TUTE (${kind})`, tipo: "tute" });
+        return;
+      }
+      if (e.t === "cante") {
+        setAnuncio({ texto: `J${e.seat + 1} canta ${e.palo} (${e.puntos})`, tipo: "cante" });
+        return;
+      }
+      if (e.t === "irADos") {
+        setAnuncio({ texto: `J${e.seat + 1} va a los dos!`, tipo: "irados" });
+        return;
+      }
+    }
+  }, [game.reoLog]);
+
+  // Auto-ocultar anuncio tras 2 segundos
+  React.useEffect(() => {
+    if (!anuncio) return;
+    const t = window.setTimeout(() => setAnuncio(null), 2000);
+    return () => window.clearTimeout(t);
+  }, [anuncio]);
+
+  // Cleanup global del timer IA (solo al desmontar)
+  React.useEffect(() => () => {
+    if (aiTimerRef.current) {
+      window.clearTimeout(aiTimerRef.current);
+      aiTimerRef.current = null;
+      aiBusyRef.current = false;
+    }
+  }, []);
 
   // Resetear flag de bloqueo cuando cambia el turno o la baza
   React.useEffect(() => {
@@ -89,17 +136,34 @@ export default function App_v2() {
       game.dealer !== 0;
     if (humanMustDecide) return;
 
+    // Flag local para saber si este efecto agendó un timer
+    let scheduledTimer: number | null = null;
+
     // Helper para programar una acción IA con delay (con try/catch)
     const doLater = (fn: () => void, ms: number = 400) => {
       aiBusyRef.current = true;
-      aiTimerRef.current = window.setTimeout(() => {
+      const timerId = window.setTimeout(() => {
         try { fn(); }
         catch (err: any) {
           if (err?.code !== "fuera_de_turno" && err?.code !== "mesa_incompleta") console.error(err);
         } finally {
           aiBusyRef.current = false;
+          aiTimerRef.current = null;
         }
       }, ms);
+      aiTimerRef.current = timerId;
+      scheduledTimer = timerId;
+    };
+
+    // Cleanup: si el efecto se re-ejecuta antes de que el timer dispare,
+    // cancelar el timer pendiente y resetear aiBusyRef.
+    const cleanup = () => {
+      if (scheduledTimer !== null) {
+        window.clearTimeout(scheduledTimer);
+        scheduledTimer = null;
+        aiTimerRef.current = null;
+        aiBusyRef.current = false;
+      }
     };
 
     // === Fase: decidiendo_irados ===
@@ -109,51 +173,73 @@ export default function App_v2() {
       for (const seat of candidatos) {
         if (iaDebeIrADos(game, seat)) {
           doLater(() => setGame(prev => dispatch(prev, { type: "declareIrADos", seat } as any)), 500);
-          return;
+          return cleanup;
         }
       }
       // Si nadie declara en 1200ms → pasamos a jugando sin irADos
       const t = window.setTimeout(() => {
         setGame(prev => (prev.status === "decidiendo_irados" ? dispatch(prev, { type: "lockNoIrADos" }) : prev));
       }, 1200);
-      return () => window.clearTimeout(t);
+      return () => { cleanup(); window.clearTimeout(t); };
     }
 
     if (game.status === "jugando") {
-      // 🛑 Si hay 3 cartas, espera a resolver
+      // Si hay 3 cartas, espera a resolver
       if (game.mesa.length === 3) return;
 
       const turno = game.turno;
       if (turno === 0) return; // tu turno, IA no actúa
 
-      // 1) TUTE si procede (antes que 20/40)
-      const tute = canteTuteDisponibleParaSeat(game, turno as Seat);
-      if (tute) {
-        doLater(() => setGame(prev => dispatch(prev, { type: "cantarTute", seat: turno as Seat } as any)), 250);
-        return;
+      // Solo cantar si ganó la baza anterior y mesa está vacía
+      const puedeCantar =
+        game.mesa.length === 0 &&
+        game.ultimoGanadorBaza === turno;
+
+      if (puedeCantar) {
+        // ¿Ya cantó algo en esta baza? (un solo cante por baza ganada)
+        const yaCanto = game.reoLog.some((e: any) =>
+          (e.t === "cante" || e.t === "tute") &&
+          e.seat === turno &&
+          e.turno === game.bazaN
+        );
+
+        if (!yaCanto) {
+          // 1) TUTE si procede (máxima prioridad)
+          const tute = canteTuteDisponibleParaSeat(game, turno as Seat);
+          if (tute) {
+            doLater(() => setGame(prev => dispatch(prev, { type: "cantarTute", seat: turno as Seat } as any)), 350);
+            return cleanup;
+          }
+
+          // 2) CANTES 20/40 — solo UNO por baza ganada (el más valioso)
+          const cantes = cantesDisponiblesParaSeat(game, turno as Seat);
+          if (cantes.length > 0) {
+            const mejor = cantes.reduce((a, b) => b.puntos > a.puntos ? b : a);
+
+            doLater(() => {
+              setGame(prev => dispatch(prev, {
+                type: "cantar",
+                seat: turno as Seat,
+                palo: mejor.palo,
+                puntos: mejor.puntos
+              } as any));
+            }, 350);
+            return cleanup;
+          }
+        }
       }
 
-      // 2) CANTES 20/40
-      const cantes = cantesDisponiblesParaSeat(game, turno as Seat);
-      if (cantes.length > 0) {
-        // Canta TODOS los palos disponibles con pequeños delays, luego jugará
-        cantes.forEach((opt, idx) => {
-          doLater(() => setGame(prev => dispatch(prev, { type: "cantar", seat: turno as Seat, palo: opt.palo, puntos: opt.puntos } as any)), 250 + idx * 250);
-        });
-        // IMPORTANTE: devolvemos para que en el siguiente ciclo (estado ya actualizado) decida cambiar7/jugar
-        return;
-      }
-
-      // 2) Cambiar 7 si procede (antes de su primera carta)
+      // 3) Cambiar 7 si procede (antes de su primera carta)
       if (iaDebeCambiar7(game, turno)) {
         doLater(() => setGame(prev => dispatch(prev, { type: "cambiar7", seat: turno } as any)), 350);
-        return;
+        return cleanup;
       }
 
-      // 3) Jugar carta
+      // 4) Jugar carta
       const carta = iaEligeCarta(game, turno);
       if (carta) {
         doLater(() => setGame(prev => dispatch(prev, { type: "jugarCarta", seat: turno, card: carta } as any)), 500 + Math.random() * 300);
+        return cleanup;
       }
     }
   }, [game]);
@@ -270,17 +356,12 @@ export default function App_v2() {
         return;
       }
 
-      console.log('[DEBUG] Estado de cantesCantados para J1:', game.cantesCantados[0]);
-      console.log('[DEBUG] Mano de J1:', game.jugadores[0].mano);
-
       // Si J1 ganó baza: calcula cantes con la mano actual
       const posibles = obtenerCantesJ1(
         game.jugadores[0].mano,
         game.triunfo?.palo || null,
         game.cantesCantados[0] // ✅ pasar el estado de cantes
       );
-      
-      console.log('[DEBUG] Cantes calculados para J1:', posibles);
 
       setCantesDisponiblesJ1(posibles);
 
@@ -292,7 +373,7 @@ export default function App_v2() {
       game.triunfo,
       game.jugadores,
       game.cantesCantados,
-      bloqueaCantesEsteTurno, // ✅ añadir a dependencias
+      bloqueaCantesEsteTurno,
   ]);
 
   // Hidratar la SERIE desde localStorage (piedras + dealer) si existen
@@ -658,18 +739,12 @@ export default function App_v2() {
 
   // Calcula cantes (20/40) en la mano de J1 según el triunfo
   // Firma actualizada
-  function obtenerCantesJ1(
-    mano: Card[], 
-    triunfoPalo: Palo | null,
-    yaCantados: Record<Palo, boolean> // ✅ AÑADIR este parámetro
-  ): CanteOpt[] {
+  function obtenerCantesJ1(mano: Card[], triunfoPalo: Palo | null, yaCantados: Record<Palo, boolean>): CanteOpt[] {
     if (!triunfoPalo) return [];
     const palos: Palo[] = ["oros", "copas", "espadas", "bastos"];
     const res: CanteOpt[] = [];
-    
     for (const p of palos) {
-      if (yaCantados[p]) continue; // ✅ ahora sí funciona
-      
+      if (yaCantados[p]) continue; // ✅ evita repetir cantes
       const tieneRey = mano.some(c => c.palo === p && c.num === 12);
       const tieneCab = mano.some(c => c.palo === p && c.num === 11);
       if (tieneRey && tieneCab) {
@@ -1030,6 +1105,65 @@ export default function App_v2() {
             0 0 0 3px rgba(255, 77, 77, 0.55),
             0 0 0 6px rgba(255, 77, 77, 0.20);
         }
+        .mesaBox.anuncio-activo {
+          box-shadow:
+            0 0 12px 4px rgba(0, 255, 120, 0.5),
+            0 0 30px 8px rgba(0, 255, 120, 0.25),
+            0 10px 30px rgba(0,0,0,.25) inset;
+          border: 2px solid rgba(0, 255, 120, 0.7);
+          transition: box-shadow 0.3s ease, border 0.3s ease;
+        }
+        .mesaBox.anuncio-tute {
+          box-shadow:
+            0 0 16px 6px rgba(255, 215, 0, 0.6),
+            0 0 40px 12px rgba(255, 215, 0, 0.3),
+            0 10px 30px rgba(0,0,0,.25) inset;
+          border: 2px solid rgba(255, 215, 0, 0.8);
+        }
+        .mesaBox.anuncio-irados {
+          box-shadow:
+            0 0 12px 4px rgba(255, 140, 0, 0.5),
+            0 0 30px 8px rgba(255, 140, 0, 0.25),
+            0 10px 30px rgba(0,0,0,.25) inset;
+          border: 2px solid rgba(255, 140, 0, 0.7);
+        }
+        @keyframes anuncio-in {
+          from { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+          to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+        .anuncio-overlay {
+          position: absolute;
+          top: 50%; left: 50%;
+          transform: translate(-50%, -50%);
+          z-index: 10;
+          padding: 14px 28px;
+          border-radius: 12px;
+          font-size: 20px;
+          font-weight: 800;
+          text-align: center;
+          white-space: nowrap;
+          pointer-events: none;
+          animation: anuncio-in 250ms ease-out both;
+        }
+        .anuncio-overlay.cante {
+          background: rgba(0, 80, 40, 0.85);
+          color: #66ffaa;
+          border: 2px solid rgba(0, 255, 120, 0.6);
+          text-shadow: 0 0 12px rgba(0, 255, 120, 0.5);
+        }
+        .anuncio-overlay.tute {
+          background: rgba(80, 60, 0, 0.9);
+          color: #ffd700;
+          border: 2px solid rgba(255, 215, 0, 0.7);
+          text-shadow: 0 0 16px rgba(255, 215, 0, 0.6);
+          font-size: 26px;
+        }
+        .anuncio-overlay.irados {
+          background: rgba(80, 40, 0, 0.9);
+          color: #ffaa33;
+          border: 2px solid rgba(255, 140, 0, 0.6);
+          text-shadow: 0 0 12px rgba(255, 140, 0, 0.5);
+        }
       `}</style>
 
       <div className="page">
@@ -1059,7 +1193,7 @@ export default function App_v2() {
                   }
                 }}
               title="Configura un REO de test: manos, dealer y muestra">
-              Simular REO2
+              Simular REO
             </button>
             <button onClick={() => send({ type: "startRound" })}>Iniciar REO</button>
 
@@ -1118,8 +1252,16 @@ export default function App_v2() {
 
             {/* MESA CENTRO */}
             <div style={{ gridColumn: "2", gridRow: "2" }}>
-              <div className="mesaBox">
+              <div
+                className={`mesaBox${anuncio ? ` anuncio-${anuncio.tipo === "cante" ? "activo" : anuncio.tipo}` : ""}`}
+                style={{ position: "relative" }}
+              >
                 <MesaVisual mesa={game.mesa} />
+                {anuncio && (
+                  <div className={`anuncio-overlay ${anuncio.tipo}`} key={anuncio.texto}>
+                    {anuncio.texto}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1345,11 +1487,21 @@ export default function App_v2() {
           setGame(prev => dispatch(prev, { type: "declareIrADos", seat: 0 }));
         }}
         onNo={() => {
-          // J1 NO quiere. Si IA B está activa, ella decidirá. Si nadie declara en 800 ms, arrancamos sin irADos.
+          // J1 NO quiere. Evaluamos si alguna IA quiere ir a los dos.
           setShowDecision(false);
           window.setTimeout(() => {
-            // Si seguimos aún decidiendo, forzamos entrada a "jugando"
-            setGame(prev => (prev.status === "decidiendo_irados" ? dispatch(prev, { type: "lockNoIrADos" }) : prev));
+            setGame(prev => {
+              if (prev.status !== "decidiendo_irados") return prev;
+              // Dar oportunidad a cada IA activa (no J1)
+              const candidatos = prev.activos.filter(s => s !== 0);
+              for (const seat of candidatos) {
+                if (iaDebeIrADos(prev, seat)) {
+                  return dispatch(prev, { type: "declareIrADos", seat });
+                }
+              }
+              // Nadie quiere → lockNoIrADos
+              return dispatch(prev, { type: "lockNoIrADos" });
+            });
           }, 800);
         }}
       />

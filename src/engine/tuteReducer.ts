@@ -204,9 +204,19 @@ export function dispatch(state: GameState, event: GameEvent): GameState {
       const logEntry = { t: "tute", seat, turno: state.bazaN, kind, puntos: 0 } as const;
 
       // Cerrar REO si procede
-      const status = (state.irADos !== null && seat !== state.irADos)
-        ? "resumen" // TUTE contra el solo → se cierra
-        : state.status;
+      let status: GameState["status"] = state.status;
+
+      if (state.irADos === null) {
+        // ✅ Caso normal (sin ir a los dos): TUTE cierra el REO siempre
+        status = "resumen";
+      } else {
+        // Con ir a los dos
+        if (seat !== state.irADos) {
+          // ✅ Equipo canta contra el solo → cierra el REO
+          status = "resumen";
+        }
+        // ❌ Si el solo canta → NO cierra (perdedores ya está vacío arriba)
+      }
       
       const cantesCantados = { ...state.cantesCantados };
 
@@ -335,6 +345,18 @@ function mustState(state: GameState, ...allowed: GameState["status"][]) {
   }
 }
 
+// De entre los candidatos, devuelve el más lejano al salidor (primer activo).
+// El salidor (mano) es activos[0]; el más lejano es el último en el orden.
+function masLejanoAlSalidor(candidatos: Seat[], activos: Seat[]): Seat {
+  let peor: Seat = candidatos[0];
+  let peorIdx = activos.indexOf(candidatos[0]);
+  for (const s of candidatos) {
+    const idx = activos.indexOf(s);
+    if (idx > peorIdx) { peorIdx = idx; peor = s; }
+  }
+  return peor;
+}
+
 function nextTurn(activos: Seat[], current: Seat): Seat {
   const idx = activos.indexOf(current);
   return activos[(idx + 1) % activos.length];
@@ -387,11 +409,34 @@ function resolverBazaInner(state: GameState): GameState {
     let perdedores: Seat[] = [];
 
     if (state.irADos === null) {
-      // ✔ Caso normal (sin ir a los dos): perdedores = min entre activos
+      // ✔ Caso normal (sin ir a los dos): perdedor = quien menos puntos tiene
       const activos = s1.activos;
       const ptsActivos = activos.map(seat => ({ seat, pts: jugadores[seat].puntos }));
       const min = Math.min(...ptsActivos.map(x => x.pts));
-      perdedores = ptsActivos.filter(x => x.pts === min).map(x => x.seat);
+      const empatados = ptsActivos.filter(x => x.pts === min).map(x => x.seat);
+
+      if (empatados.length === 1) {
+        // Sin empate: pierde el único con menos puntos
+        perdedores = empatados;
+      } else {
+        // Desempate: solo puede perder UNO
+        // 1) Si uno de los empatados ganó el monte (última baza), ese se salva
+        const sinMonte = empatados.filter(s => s !== ganador);
+        if (sinMonte.length < empatados.length && sinMonte.length >= 1) {
+          // Alguien empatado ganó el monte → se salva, pierden los demás
+          // Pero solo puede perder 1 en caso normal, así que desempatamos entre sinMonte
+          if (sinMonte.length === 1) {
+            perdedores = sinMonte;
+          } else {
+            // Varios empatados sin monte: pierde el más LEJANO al salidor
+            perdedores = [masLejanoAlSalidor(sinMonte, s1.activos)];
+          }
+        } else {
+          // 2) Ninguno de los empatados ganó el monte (o todos lo ganaron, imposible con >1)
+          //    Pierde el más lejano al salidor (el de mano se salva)
+          perdedores = [masLejanoAlSalidor(empatados, s1.activos)];
+        }
+      }
     } else {
       // ✔ Caso ir a los dos: solo vs equipo
       const solo = state.irADos as Seat;

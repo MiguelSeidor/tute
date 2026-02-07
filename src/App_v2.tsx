@@ -1172,7 +1172,7 @@ export default function App_v2() {
 
           {/* Cabecera */}
         <div className="headerBar">
-          <h2 style={{ margin: 0 }}>Tute Valenciano — V2 (motor)</h2>
+          <h2 style={{ margin: 0 }}>Tute Parrillano</h2>
           <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
             <button 
               onClick={() => {

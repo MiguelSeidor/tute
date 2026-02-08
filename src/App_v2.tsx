@@ -174,12 +174,18 @@ export default function App_v2() {
     setBloqueaCantesEsteTurno(false);
   }, [game.turno, game.bazaN]);
 
-  // === BOCADILLO: frases random cada 10 segundos ===
+  // Seats controlados por humanos (preparado para multijugador)
+  const seatsHumanos: Seat[] = [0 as Seat];
+
+  // === BOCADILLO: frases random cada 20 segundos (solo IA) ===
   React.useEffect(() => {
     if (game.status !== "jugando") return;
 
     const interval = window.setInterval(() => {
-      const candidates = game.activos.length > 0 ? game.activos : ([0, 1, 2, 3] as Seat[]);
+      // Solo IA: excluir seats humanos
+      const candidates = (game.activos.length > 0 ? game.activos : ([0, 1, 2, 3] as Seat[]))
+        .filter(s => !seatsHumanos.includes(s));
+      if (candidates.length === 0) return;
       const seat = candidates[Math.floor(Math.random() * candidates.length)];
       const frase = FRASES_RANDOM[Math.floor(Math.random() * FRASES_RANDOM.length)];
       mostrarBocadillo(seat, frase);
@@ -1506,6 +1512,29 @@ export default function App_v2() {
               </button>
             )}
             
+            {/* Bocadillo: selector de frases para J1 */}
+            <select
+              value=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  mostrarBocadillo(0 as Seat, e.target.value);
+                  e.target.value = "";
+                }
+              }}
+              style={{
+                padding: "6px 10px", borderRadius: 6, fontSize: 13,
+                background: "rgba(255,255,255,0.12)", color: "#fff",
+                border: "1px solid rgba(255,255,255,0.3)", cursor: "pointer",
+                maxWidth: 200,
+              }}
+              title="Elige una frase para tu bocadillo"
+            >
+              <option value="" disabled>Decir algo...</option>
+              {FRASES_RANDOM.map((f, i) => (
+                <option key={i} value={f} style={{ color: "#111" }}>{f}</option>
+              ))}
+            </select>
+
             {/* Tirárselas (J1 se rinde) */}
             {game.status === "jugando" && game.activos.includes(0 as Seat) && (
               <button

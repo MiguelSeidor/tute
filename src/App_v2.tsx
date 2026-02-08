@@ -71,6 +71,7 @@ export default function App_v2() {
   const [restartKind, setRestartKind] = useState<"reo" | "serie" | null>(null);
   const [plannedDealer, setPlannedDealer] = useState<Seat | null>(null);
   const [showSim, setShowSim] = React.useState(false);
+  const [showPiedrasChoice, setShowPiedrasChoice] = useState(false);
   const RESET_ON_REFRESH = true;
 
   // === BOCADILLOS tipo cómic ===
@@ -573,12 +574,8 @@ export default function App_v2() {
       localStorage.removeItem("tv2_destapado");
     } catch {}
 
-    // 1) resetear serie (piedras = seriePiedrasIniciales -> 5)
-    setGame(prev => dispatch(prev, { type: "resetSerie" }));
-
-    // 2) iniciar REO nuevo con dealer aleatorio
-    const randDealer = Math.floor(Math.random() * 4) as Seat;
-    setGame(prev => dispatch(prev, { type: "startRound", dealer: randDealer }));
+    // Mostrar selector de piedras antes de empezar
+    setShowPiedrasChoice(true);
 
   }, []);
 
@@ -598,6 +595,17 @@ export default function App_v2() {
       console.error(err);
       alert(err?.message || "Error inesperado");
     }
+  }
+
+  function iniciarNuevaSerie(piedras: number) {
+    setShowPiedrasChoice(false);
+    const randDealer = Math.floor(Math.random() * 4) as Seat;
+    setGame(prev => dispatch(prev, { type: "resetSerie", piedras }));
+    setGame(prev => dispatch(prev, { type: "startRound", dealer: randDealer }));
+    setHideSummary(false);
+    setAutoRestartSeconds(null);
+    setRestartKind(null);
+    setPlannedDealer(null);
   }
 
   // Helpers UI
@@ -1716,11 +1724,8 @@ export default function App_v2() {
           setHideSummary(true);
 
           if (game.serieTerminada) {
-            // SERIE: planificamos dealer aleatorio y marcamos tipo 'serie'
-            const randomSeat = Math.floor(Math.random() * 4) as Seat;
-            setPlannedDealer(randomSeat);
-            setRestartKind("serie");
-            setAutoRestartSeconds(5);
+            // SERIE terminada: preguntar piedras antes de reiniciar
+            setShowPiedrasChoice(true);
           } else {
             // REO: planificamos dealer rotado y marcamos tipo 'reo'
             const nextDealer = ((game.dealer + 3) % 4) as Seat;
@@ -1781,6 +1786,37 @@ export default function App_v2() {
           )}
         </div>
       )}
+      {/* Overlay: Elección de piedras (inicio de serie) */}
+      {showPiedrasChoice && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+          display: "flex", justifyContent: "center", alignItems: "center", zIndex: 99999
+        }}>
+          <div style={{
+            background: "rgba(255,255,255,0.95)", padding: "28px 35px", borderRadius: 12,
+            border: "2px solid rgba(0,0,0,0.25)", boxShadow: "0 8px 45px rgba(0,0,0,0.35)",
+            textAlign: "center", minWidth: 300, color: "#111"
+          }}>
+            <h2 style={{ marginTop: 0 }}>Nueva partida</h2>
+            <p style={{ marginBottom: 20 }}>¿A cuántas piedras quieres jugar?</p>
+            <div style={{ display: "flex", justifyContent: "center", gap: 20 }}>
+              <button
+                style={{ padding: "12px 28px", fontSize: 18, borderRadius: 8, fontWeight: 700 }}
+                onClick={() => iniciarNuevaSerie(3)}
+              >
+                3 Piedras
+              </button>
+              <button
+                style={{ padding: "12px 28px", fontSize: 18, borderRadius: 8, fontWeight: 700 }}
+                onClick={() => iniciarNuevaSerie(5)}
+              >
+                5 Piedras
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
   {showSim && ReactDOM.createPortal(
     <Simulador4
       visible={showSim}

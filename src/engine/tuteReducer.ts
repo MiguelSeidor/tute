@@ -342,9 +342,8 @@ export function dispatch(state: GameState, event: GameEvent): GameState {
     }
 
     case "resetSerie": {
-      // Reinicia la serie: piedras al valor inicial, limpia flags de serie.
-      // Dealer: por defecto lo dejamos como esté; si prefieres reiniciar dealer a 0, te indico abajo.
-      const piedrasInicial = state.seriePiedrasIniciales ?? 5;
+      // Reinicia la serie: piedras al valor indicado o al valor inicial guardado.
+      const piedrasInicial = event.piedras ?? state.seriePiedrasIniciales ?? 5;
       const piedras: Record<Seat, number> = { 0: piedrasInicial, 1: piedrasInicial, 2: piedrasInicial, 3: piedrasInicial };
 
       // Limpieza de estado de REO/serie sin tocar dealer (o reseteándolo si quisieras)
@@ -367,6 +366,7 @@ export function dispatch(state: GameState, event: GameEvent): GameState {
         perdedores: [],
         irADos: null,
         piedras,                           // ⬅️ piedras reset
+        seriePiedrasIniciales: piedrasInicial, // ⬅️ actualizar por si cambió
         serieTerminada: false,             // ⬅️ limpiar flag
         reoLog: [],                        // ⬅️ nueva serie, nuevo log
       };

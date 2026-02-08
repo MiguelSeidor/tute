@@ -95,7 +95,7 @@ export type GameEvent =
   | { type: "resolverBaza" }
   | { type: "tirarselas"; seat: Seat }
   | { type: "finalizarReo" }
-  | { type: "resetSerie" };
+  | { type: "resetSerie"; piedras?: number };
 
 
 export class GameError extends Error {

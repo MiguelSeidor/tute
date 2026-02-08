@@ -281,6 +281,55 @@ export function dispatch(state: GameState, event: GameEvent): GameState {
       return resolverBazaInner(state);
     }
 
+    case "tirarselas": {
+      mustState(state, "jugando");
+      const seat = event.seat;
+      if (!state.activos.includes(seat)) {
+        throw new GameError("no_activo", "Solo un activo puede tirárselas.");
+      }
+
+      let perdedores: Seat[];
+      let piedrasDeltas: { seat: Seat; delta: number }[];
+
+      if (state.irADos === null) {
+        // Caso normal: el que se rinde pierde -1
+        perdedores = [seat];
+        piedrasDeltas = [{ seat, delta: -1 }];
+      } else if (state.irADos === seat) {
+        // El solo se rinde: pierde -2
+        perdedores = [seat];
+        piedrasDeltas = [{ seat, delta: -2 }];
+      } else {
+        // Alguien del equipo se rinde → pierde todo el equipo
+        const team = state.activos.filter(s => s !== state.irADos) as Seat[];
+        perdedores = team;
+        piedrasDeltas = team.map(s => ({ seat: s, delta: -1 as const }));
+        if (SOLO_BONUS_ON_TEAM_WIN) {
+          piedrasDeltas.push({ seat: state.irADos as Seat, delta: +2 as const });
+        }
+      }
+
+      const piedrasNext = applyPiedras(state.piedras, piedrasDeltas);
+      const seatsCero = (Object.keys(piedrasNext) as unknown as Seat[])
+        .filter(s => piedrasNext[s] <= 0);
+      const serieTerminada = seatsCero.length > 0;
+
+      return {
+        ...state,
+        status: "resumen" as const,
+        perdedores,
+        piedras: piedrasNext,
+        serieTerminada,
+        reoLog: [
+          ...state.reoLog,
+          { t: "tirarselas", seat, turno: state.bazaN } as const,
+          { t: "piedras", deltas: piedrasDeltas } as const,
+          ...(serieTerminada ? [{ t: "finalizarSerie", seatsCero } as const] : []),
+          { t: "finalizarReo", perdedores } as const,
+        ],
+      };
+    }
+
     case "finalizarReo": {
       // Cierre manual (si tu UI lo necesita)
       if (state.status !== "jugando" && state.status !== "resumen") return state;

@@ -6,7 +6,7 @@ import { initGame } from "./engine/tuteInit";
 import { dispatch } from "./engine/tuteReducer";
 import type { GameEvent, GameState, Seat, Card, Palo } from "./engine/tuteTypes";
 import { Carta, MesaVisual, PanelTriunfo } from "./ui/Primitives";
-import { iaEligeCarta, iaDebeIrADos, iaDebeCambiar7 } from "./engine/tuteIA";
+import { iaEligeCarta, iaDebeIrADos, iaDebeCambiar7, iaDebeTirarselas } from "./engine/tuteIA";
 import { GameError } from "./engine/tuteTypes";
 import { puedeJugar } from "./engine/tuteLogic";
 import Simulador4 from "./ui/Simulador4";
@@ -60,7 +60,7 @@ export default function App_v2() {
   const aiTimerRef = React.useRef<number | null>(null);
 
   // === Anuncio visual (cantes, tute, ir a los dos) ===
-  const [anuncio, setAnuncio] = useState<{ texto: string; tipo: "cante" | "tute" | "irados" } | null>(null);
+  const [anuncio, setAnuncio] = useState<{ texto: string; tipo: "cante" | "tute" | "irados" | "tirarselas" } | null>(null);
   const anuncioLogLen = React.useRef(0);
 
   // Estado: última acción por seat (se actualiza al cambiar el log)
@@ -145,6 +145,10 @@ export default function App_v2() {
         setAnuncio({ texto: `J${e.seat + 1} va a los dos!`, tipo: "irados" });
         return;
       }
+      if (e.t === "tirarselas") {
+        setAnuncio({ texto: `J${e.seat + 1} se las tira!`, tipo: "tirarselas" });
+        return;
+      }
     }
   }, [game.reoLog]);
 
@@ -193,6 +197,11 @@ export default function App_v2() {
 
     for (let i = prevLen; i < log.length; i++) {
       const e = log[i] as any;
+
+      if (e.t === "tirarselas") {
+        mostrarBocadillo(e.seat as Seat, "Me rindo...");
+        return;
+      }
 
       if (e.t === "cante") {
         const singer = e.seat as Seat;
@@ -327,7 +336,13 @@ export default function App_v2() {
         }
       }
 
-      // 3) Cambiar 7 si procede (antes de su primera carta)
+      // 3) ¿Tirárselas? (IA evalúa rendición)
+      if (iaDebeTirarselas(game, turno)) {
+        doLater(() => setGame(prev => dispatch(prev, { type: "tirarselas", seat: turno })), 600);
+        return cleanup;
+      }
+
+      // 4) Cambiar 7 si procede (antes de su primera carta)
       if (iaDebeCambiar7(game, turno)) {
         doLater(() => setGame(prev => dispatch(prev, { type: "cambiar7", seat: turno } as any)), 350);
         return cleanup;
@@ -999,6 +1014,8 @@ export default function App_v2() {
                     acciones.push(`J${e.seat + 1} canta ${e.palo} (${e.puntos})`);
                   } else if (e.t === "tute") {
                     acciones.push(`J${e.seat + 1} canta TUTE (${e.kind}) (+${e.puntos})`);
+                  } else if (e.t === "tirarselas") {
+                    acciones.push(`J${e.seat + 1} se las tira`);
                   } else if (e.t === "resolverBaza") {
                     ganadorTurno = e.ganador;
                     acciones.push(`Gana la baza J${e.ganador + 1} (+${e.puntos})`);
@@ -1082,6 +1099,8 @@ export default function App_v2() {
         return `Canta TUTE`;
       case "jugar":
         return `Juega ${cartaAbbr(e.carta)}`;
+      case "tirarselas":
+        return `Se las tira`;
       case "resolverBaza":
         // esto lo asignaremos al ganador explícitamente abajo
         return null;
@@ -1262,6 +1281,19 @@ export default function App_v2() {
           border: 2px solid rgba(255, 140, 0, 0.6);
           text-shadow: 0 0 12px rgba(255, 140, 0, 0.5);
         }
+        .mesaBox.anuncio-tirarselas {
+          box-shadow:
+            0 0 12px 4px rgba(255, 60, 60, 0.5),
+            0 0 30px 8px rgba(255, 60, 60, 0.25),
+            0 10px 30px rgba(0,0,0,.25) inset;
+          border: 2px solid rgba(255, 60, 60, 0.7);
+        }
+        .anuncio-overlay.tirarselas {
+          background: rgba(100, 10, 10, 0.9);
+          color: #ff6b6b;
+          border: 2px solid rgba(255, 60, 60, 0.7);
+          text-shadow: 0 0 12px rgba(255, 60, 60, 0.5);
+        }
 
         /* === BOCADILLOS CÓMIC === */
         @keyframes bocadillo-in {
@@ -1406,6 +1438,7 @@ export default function App_v2() {
             <div style={{ gridColumn: "2", gridRow: "2" }}>
               <div
                 className={`mesaBox${anuncio ? ` anuncio-${anuncio.tipo === "cante" ? "activo" : anuncio.tipo}` : ""}`}
+
                 style={{ position: "relative" }}
               >
                 <MesaVisual mesa={game.mesa} />
@@ -1465,6 +1498,17 @@ export default function App_v2() {
               </button>
             )}
             
+            {/* Tirárselas (J1 se rinde) */}
+            {game.status === "jugando" && game.activos.includes(0 as Seat) && (
+              <button
+                onClick={() => send({ type: "tirarselas", seat: 0 })}
+                style={{ background: "rgba(255,60,60,0.25)", borderColor: "rgba(255,60,60,0.5)" }}
+                title="Rendirse: pierdes este REO inmediatamente"
+              >
+                Tirárselas
+              </button>
+            )}
+
             {/* CANTES (solo si J1 ganó la última baza) */}
             {game.status === "jugando" && !bloqueaCantesEsteTurno && cantesDisponiblesJ1.length > 0 && (
               <div style={{ display: "flex", gap: 6 }}>

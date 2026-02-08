@@ -338,6 +338,57 @@ export function iaDebeIrADos(state: GameState, seat: Seat): boolean {
   return false;
 }
 
+// ========================== TIRÁRSELAS (rendición) ==========================
+
+export function iaDebeTirarselas(state: GameState, seat: Seat): boolean {
+  if (state.status !== "jugando") return false;
+  if (!state.activos.includes(seat)) return false;
+
+  // Ir-a-dos: equipo nunca se rinde
+  if (state.irADos !== null && state.irADos !== seat) return false;
+
+  const mano = state.jugadores[seat].mano;
+  const puntos = state.jugadores[seat].puntos;
+  const tp = state.triunfo?.palo as Palo;
+
+  // Cartas que pueden ganar bazas: As, 3, Rey, Caballo (fuerzaIdx <= 3)
+  const cartasFuertes = mano.filter(c => fuerzaIdx(c.num) <= 3);
+  // Triunfos fuertes: As, 3, Rey, Caballo de triunfo
+  const triunfosFuertes = mano.filter(c => c.palo === tp && fuerzaIdx(c.num) <= 3);
+
+  // "Mano basura": TODAS las cartas son 10, 7 o 6 (fuerzaIdx >= 4)
+  // No tiene Ases, ni 3, ni Reyes, ni Caballos → no puede ganar bazas
+  const manoBasura = cartasFuertes.length === 0;
+
+  if (manoBasura) {
+    // Con mano basura, rendirse desde baza 2+ (no en la primera, dar chance a ver qué pasa)
+    if (state.bazaN >= 2) {
+      if (state.irADos === seat) return true; // Solo con basura → rendirse seguro
+      return puntos <= 30; // Normal: si además lleva pocos puntos, rendirse
+    }
+  }
+
+  // --- Camino conservador para manos con algo de fuerza ---
+  if (state.bazaN < 7) return false;
+
+  // No rendirse si tengo Ases o 3 (pueden ganar bazas)
+  if (mano.some(c => c.num === 1)) return false;
+  if (mano.some(c => c.num === 3)) return false;
+
+  // No rendirse si tengo triunfos fuertes
+  if (triunfosFuertes.length > 0) return false;
+
+  // Ir-a-dos solo: rendirse si va muy perdido
+  if (state.irADos === seat) {
+    const team = state.activos.filter(s => s !== seat) as Seat[];
+    const puntosEquipo = team.reduce((acc, t) => acc + state.jugadores[t].puntos, 0 as number);
+    return puntos < puntosEquipo * 0.4;
+  }
+
+  // Normal: rendirse si ≤10 puntos y sin cartas fuertes
+  return puntos <= 10;
+}
+
 // ========================== CAMBIAR 7 ==========================
 
 export function iaDebeCambiar7(state: GameState, seat: Seat): boolean {

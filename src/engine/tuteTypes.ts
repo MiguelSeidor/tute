@@ -39,6 +39,7 @@ export type LogEvent =
   | { t: "cante"; seat: Seat; turno: number; palo: Palo; puntos: 20 | 40 }
   | { t: "tute"; seat: Seat; turno: number; kind: "reyes" | "caballos"; puntos: number }
   | { t: "resolverBaza"; turno: number; ganador: Seat; cartas: { seat: Seat; card: Card }[]; puntos: number }
+  | { t: "tirarselas"; seat: Seat; turno: number }
   | { t: "piedras"; deltas: { seat: Seat; delta: number }[] }
   | { t: "finalizarReo"; perdedores: Seat[] }
   | { t: "finalizarSerie"; seatsCero: Seat[] };
@@ -92,6 +93,7 @@ export type GameEvent =
   | { type: "cantarTute"; seat: Seat }
   | { type: "jugarCarta"; seat: Seat; card: Card }
   | { type: "resolverBaza" }
+  | { type: "tirarselas"; seat: Seat }
   | { type: "finalizarReo" }
   | { type: "resetSerie" };
 

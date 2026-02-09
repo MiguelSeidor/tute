@@ -30,23 +30,14 @@ const FRASES_RANDOM = [
   "No te echa ni un manguito",
 ];
 
-interface FraseCondicional {
-  texto: string;
-  condicion: "cante_40" | "cante_20_oros" | "cante_20_bastos" | "cante_20_copas" | "cante_20_espadas";
-  quien: "cantante";
-}
-
-const FRASES_CONDICIONALES: FraseCondicional[] = [
-  { texto: "¡Las cuacuá!", condicion: "cante_40", quien: "cantante" },
-  { texto: "¡Oremos!", condicion: "cante_20_oros", quien: "cantante" },
-  { texto: "¡En bastos!", condicion: "cante_20_bastos", quien: "cantante" },
-  { texto: "¡En copas!", condicion: "cante_20_copas", quien: "cantante" },
-  { texto: "¡En espadas!", condicion: "cante_20_espadas", quien: "cantante" },
-];
 
 const FRASE_RIVAL_CANTE = "No.. si tos cantaremos";
 
+type GameMode = "offline" | "online" | null;
+
 export default function App_v2() {
+  const [gameMode, setGameMode] = useState<GameMode>(null);
+
   const [game, setGame] = useState<GameState>(() => {
     const randomDealer = Math.floor(Math.random() * 4) as Seat;
     return initGame(5, randomDealer);
@@ -126,6 +117,7 @@ export default function App_v2() {
     }
 
     setLastActionBySeat(last as any);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.reoLog, game.activos]);
 
   // Detectar nuevos eventos de cante/tute/irADos para mostrar anuncio visual
@@ -198,6 +190,7 @@ export default function App_v2() {
     }, 20000);
 
     return () => window.clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.status, game.activos]);
 
   // === BOCADILLO: "Tengo salida" — el salidor lo dice al empezar a jugar ===
@@ -219,6 +212,7 @@ export default function App_v2() {
         }
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.status, game.salidor]);
 
   // === BOCADILLO: frases condicionales (cantes, tute, tirárselas, piedras) ===
@@ -297,6 +291,7 @@ export default function App_v2() {
         return;
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.reoLog]);
 
   React.useEffect(() => {
@@ -421,6 +416,7 @@ export default function App_v2() {
         return cleanup;
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game]);
 
   // Mostrar overlay si estamos en "decidiendo_irados" y J1 es activo
@@ -543,6 +539,7 @@ export default function App_v2() {
 
       setCantesDisponiblesJ1(posibles);
 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
       game.status,
       game.turno,
@@ -600,6 +597,7 @@ export default function App_v2() {
     } catch (e) {
       console.warn("[persistencia] No se pudo guardar tv2_series:", e);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.dealer, game.piedras]);
 
   // === Juego destapado (debug): mostrar todas las cartas de todos los jugadores ===
@@ -612,7 +610,7 @@ export default function App_v2() {
       if (!raw) return;
       const v = JSON.parse(raw);
       if (typeof v === "boolean") setModoDestapado(v);
-    } catch {}
+    } catch { /* ignore */ }
   }, []);
 
   // Persistir en localStorage
@@ -620,7 +618,8 @@ export default function App_v2() {
     if (RESET_ON_REFRESH) return;
     try {
       localStorage.setItem("tv2_destapado", JSON.stringify(modoDestapado));
-    } catch {}
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modoDestapado]);
 
   // justo dentro del componente App_v2
@@ -636,11 +635,12 @@ export default function App_v2() {
       // Limpia cualquier rastro previo
       localStorage.removeItem("tv2_series");
       localStorage.removeItem("tv2_destapado");
-    } catch {}
+    } catch { /* ignore */ }
 
     // Mostrar selector de piedras antes de empezar
     setShowPiedrasChoice(true);
 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
 
@@ -721,11 +721,6 @@ export default function App_v2() {
     const activos = game.activos;
 
     const isEliminated = (game.eliminados ?? []).includes(seat);
-    const canJ1Play =
-      seat === 0 &&
-      game.status === "jugando" &&
-      game.turno === 0 &&
-      activos.includes(0 as Seat);
 
     return (
       <div style={{ textAlign: "center", minWidth: 200 }}>
@@ -822,7 +817,6 @@ export default function App_v2() {
       if (!el) return;
       const containerW = el.clientWidth || 0;
       const cardW = readCssNumber("--card-w", 110);
-      const cardH = readCssNumber("--card-h", Math.round(cardW * 1.45));
       const requiredW = TOTAL_SLOTS * cardW + (TOTAL_SLOTS - 1) * GAP_PX;
       const sRaw = containerW > 0 ? containerW / requiredW : 1;
       const s = Math.min(1, Math.max(0.85, sRaw)); // ⬅️ suelo 0.85 para no “encoger” de más
@@ -942,16 +936,6 @@ export default function App_v2() {
       }
     }
     return res;
-  }
-
-  // El último ganador de baza (leyendo del log)
-  function ultimoGanadorBaza(game: GameState): Seat | null {
-    // Buscamos el último evento t:"resolverBaza"
-    for (let i = game.reoLog.length - 1; i >= 0; i--) {
-      const e = game.reoLog[i] as any;
-      if (e?.t === "resolverBaza" && typeof e.ganador === "number") return e.ganador as Seat;
-    }
-    return null;
   }
 
   function canteTuteDisponibleParaSeat(game: GameState, seat: Seat): { kind: "reyes" | "caballos" } | null {
@@ -1224,7 +1208,95 @@ export default function App_v2() {
   }
 
 
-  // Render
+  // ========================== SHARED BODY STYLES ==========================
+  const bodyStyle = `
+    body {
+      margin: 0;
+      background: radial-gradient(1400px 900px at 20% 10%, #2e7d32 0%, #1b5e20 60%, #0f3f14 100%);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    #root {
+      max-width: none;
+      padding: 0;
+      width: 100%;
+    }
+    .mode-screen {
+      min-height: 100svh;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    .mode-btn {
+      padding: 24px 48px;
+      font-size: clamp(1rem, 2.5vw, 1.3rem);
+      font-weight: 700;
+      border-radius: 14;
+      border: 2px solid rgba(255,255,255,.3);
+      background: rgba(255,255,255,.12);
+      color: #fff;
+      cursor: pointer;
+      transition: background .2s, transform .15s;
+      min-width: min(220px, 40vw);
+      text-align: center;
+      border-radius: 14px;
+    }
+    .mode-btn:hover {
+      background: rgba(255,255,255,.25);
+      transform: scale(1.04);
+    }
+    .mode-btn:active {
+      transform: scale(0.98);
+    }
+  `;
+
+  // ========================== MODE SELECTION ==========================
+  if (gameMode === null) {
+    return (
+      <>
+        <style>{bodyStyle}</style>
+        <div className="mode-screen" style={{ gap: 32 }}>
+          <h1 style={{ fontSize: "clamp(2.2rem, 6vw, 4rem)", margin: 0, textShadow: "0 3px 12px rgba(0,0,0,.4)", textAlign: "center" }}>
+            Tute Parrillano
+          </h1>
+          <p style={{ opacity: 0.8, margin: 0, fontSize: "clamp(1rem, 2vw, 1.2rem)" }}>Elige modo de juego</p>
+          <div style={{ display: "flex", gap: 24, flexWrap: "wrap", justifyContent: "center", marginTop: 8 }}>
+            <button className="mode-btn" onClick={() => setGameMode("offline")}>
+              Juego Offline
+              <div style={{ fontSize: ".85rem", fontWeight: 400, opacity: .7, marginTop: 8 }}>Juega contra la IA</div>
+            </button>
+            <button className="mode-btn" onClick={() => setGameMode("online")}>
+              Juego Online
+              <div style={{ fontSize: ".85rem", fontWeight: 400, opacity: .7, marginTop: 8 }}>Juega con amigos</div>
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (gameMode === "online") {
+    return (
+      <>
+        <style>{bodyStyle}</style>
+        <div className="mode-screen" style={{ gap: 24 }}>
+          <h1 style={{ fontSize: "clamp(1.6rem, 4vw, 2.5rem)", margin: 0, textShadow: "0 2px 8px rgba(0,0,0,.4)" }}>Juego Online</h1>
+          <p style={{ opacity: 0.7, maxWidth: 500, textAlign: "center", fontSize: "clamp(.95rem, 2vw, 1.1rem)", lineHeight: 1.5 }}>
+            El modo online estará disponible próximamente. Aquí aparecerá el Login para jugar con amigos.
+          </p>
+          <button className="mode-btn" onClick={() => setGameMode(null)} style={{ padding: "14px 32px" }}>
+            Volver
+          </button>
+        </div>
+      </>
+    );
+  }
+
+  // Render (Offline mode)
   return (
     <>
       {/* Reutilizamos tu CSS (puedes moverlo a .css cuando quieras) */}

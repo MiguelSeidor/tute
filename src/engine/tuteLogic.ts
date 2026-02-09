@@ -1,11 +1,11 @@
-import { type Card, CARTAS, FUERZA, GameError, type Palo, PUNTOS, PALOS, type Seat } from "./tuteTypes";
+import { type Card, CARTAS, FUERZA, GameError, type Numero, type Palo, PUNTOS, PALOS, type Seat } from "./tuteTypes";
 
 // RNG simple (puedes pasar otro RNG más adelante)
 export type RNG = () => number;
 export const defaultRng: RNG = () => Math.random();
 
 export function fuerzaIdx(n: number) {
-  return FUERZA.indexOf(n as any);
+  return FUERZA.indexOf(n as Numero);
 }
 export function puntosCarta(c: Card) {
   return PUNTOS[c.num];

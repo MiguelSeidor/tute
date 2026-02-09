@@ -129,10 +129,10 @@ export function Simulador4({
     if (!p2.ok) return setSimError(p2.error!);
     if (!p3.ok) return setSimError(p3.error!);
 
-    let j0 = uniqueCards(p0.cards);
-    let j1 = uniqueCards(p1.cards);
-    let j2 = uniqueCards(p2.cards);
-    let j3 = uniqueCards(p3.cards);
+    const j0 = uniqueCards(p0.cards);
+    const j1 = uniqueCards(p1.cards);
+    const j2 = uniqueCards(p2.cards);
+    const j3 = uniqueCards(p3.cards);
 
     // dealer sin cartas, el resto 9
     const bySeat = { 0: j0, 1: j1, 2: j2, 3: j3 } as Record<Seat, Card[]>;

@@ -1,10 +1,8 @@
-import { type GameEvent, type GameState, GameError, type Seat, type Card, type Palo, PUNTOS, FUERZA } from "./tuteTypes";
+import { type GameEvent, type GameState, GameError, type Seat, type Card, type Palo, FUERZA } from "./tuteTypes";
 import { startRound } from "./tuteInit";
-import { puedeJugar, ganadorDeMesa, fuerzaIdx } from "./tuteLogic";
+import { puedeJugar, ganadorDeMesa } from "./tuteLogic";
 
 
-const TUTE_POINTS = 100;   // cambia si tu variante usa otro valor
-const TUTE_ENDS_REO = false; // si true, cantar tute cierra el REO inmediatamente
 
 export function dispatch(state: GameState, event: GameEvent): GameState {
   switch (event.type) {
@@ -169,7 +167,7 @@ export function dispatch(state: GameState, event: GameEvent): GameState {
       // Aplicar penalización a piedras  ✔
       // Cerrar REO si corresponde       ✔
 
-      let piedrasNext = { ...piedrasPrev };
+      const piedrasNext = { ...piedrasPrev };
       let perdedores: Seat[] = [];
       let serieTerminada = state.serieTerminada;
 

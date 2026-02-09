@@ -68,7 +68,8 @@ export interface GameState {
   piedras: Record<Seat, number>;
 
   seriePiedrasIniciales: number;    // cuántas piedras tenía cada jugador al empezar la serie (ej. 5)
-  serieTerminada: boolean;          // true si algún seat llega a 0 y se cierra la serie
+  serieTerminada: boolean;          // true si 2+ seats llegan a 0 y se cierra la serie
+  eliminados: Seat[];               // seats eliminados (0 piedras en un REO anterior)
 
   ultimoGanadorBaza: Seat | null;
   cantesCantados: Record<Seat, Record<Palo, boolean>>;

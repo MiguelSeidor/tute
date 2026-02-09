@@ -38,8 +38,9 @@ export function initGame(
     salidorInicialSerie: ((dealer + 1) % 4) as Seat,
     bazasPorJugador: { 0: [], 1: [], 2: [], 3: [] },
     piedras,
-    seriePiedrasIniciales: piedrasIniciales, 
-    serieTerminada: false, 
+    seriePiedrasIniciales: piedrasIniciales,
+    serieTerminada: false,
+    eliminados: [],
     ultimoGanadorBaza: null,                                     
     cantesCantados: {                                            
       0: { oros:false, copas:false, espadas:false, bastos:false },
@@ -62,10 +63,12 @@ function mkPlayerInfo(piedrasIniciales: number): PlayerInfo {
 }
 
 
-function validarPreset(preset: StartPreset, dealer: Seat) {
+function validarPreset(preset: StartPreset, dealer: Seat, eliminados: Seat[] = []) {
   const ALL: Card[] = PALOS.flatMap(p => [1,3,6,7,10,11,12].map(n => ({ palo: p, num: n as any })));
   const manos = preset.manos || {};
   const key = (c: Card) => `${c.palo}-${c.num}`;
+  const alive = ([0,1,2,3] as Seat[]).filter(s => !eliminados.includes(s));
+  const dealerPlays = alive.length <= 3; // con 3 vivos el dealer también juega
 
   const usadas = [
     ...(manos[0] ?? []),
@@ -73,12 +76,17 @@ function validarPreset(preset: StartPreset, dealer: Seat) {
     ...(manos[2] ?? []),
     ...(manos[3] ?? []),
   ];
-  // dealer vacío
-  if ((manos[dealer] ?? []).length !== 0) throw new Error("Preset inválido: el dealer debe tener 0 cartas");
-  // los demás con 9
-  ([0,1,2,3] as Seat[]).filter(s => s !== dealer).forEach(s => {
+  // dealer vacío solo si no juega (4 vivos)
+  if (!dealerPlays && (manos[dealer] ?? []).length !== 0) throw new Error("Preset inválido: el dealer debe tener 0 cartas");
+  // activos con 9 cartas cada uno
+  const activos = dealerPlays ? alive : alive.filter(s => s !== dealer);
+  activos.forEach(s => {
     const len = (manos[s] ?? []).length;
     if (len !== 9) throw new Error(`Preset inválido: el seat ${s} debe tener 9 cartas (tiene ${len})`);
+  });
+  // eliminados con 0 cartas
+  eliminados.forEach(s => {
+    if ((manos[s] ?? []).length !== 0) throw new Error(`Preset inválido: el seat ${s} está eliminado y debe tener 0 cartas`);
   });
   // duplicados (incluyendo triunfo)
   const set = new Set<string>(usadas.map(key).concat(key(preset.triunfo)));
@@ -89,23 +97,42 @@ function validarPreset(preset: StartPreset, dealer: Seat) {
 }
 
 
-// Arranca un REO: dealer reparte, define activos (los 3 seats ≠ dealer), salidor = dealer+1
+// Arranca un REO: dealer reparte, define activos, salidor = siguiente vivo tras dealer
 export function startRound(
   state: GameState,
   rng: () => number = Math.random,
   preset?: StartPreset
 ): GameState {
   const dealer = preset?.dealer ?? state.dealer;
-  const salidor = ((dealer + 3) % 4) as Seat;
   const CLOCKWISE: Seat[] = [0, 3, 2, 1];
-  const activosHorario = CLOCKWISE.filter(s => s !== dealer) as Seat[];
+  const eliminados = state.eliminados ?? [];
+  const alive = CLOCKWISE.filter(s => !eliminados.includes(s));
+
+  // Salidor: siguiente vivo en sentido horario desde el dealer
+  const dealerIdxCW = CLOCKWISE.indexOf(dealer);
+  let salidor: Seat = dealer;
+  for (let i = 1; i < 4; i++) {
+    const candidate = CLOCKWISE[(dealerIdxCW + i) % CLOCKWISE.length];
+    if (!eliminados.includes(candidate)) {
+      salidor = candidate;
+      break;
+    }
+  }
+
+  // Activos: con 4 vivos el dealer no juega; con 3 vivos el dealer también juega
+  let activosHorario: Seat[];
+  if (alive.length >= 4) {
+    activosHorario = alive.filter(s => s !== dealer);
+  } else {
+    activosHorario = [...alive]; // los 3 vivos juegan (incluido dealer)
+  }
   const activosEnOrden = rotateToStart(activosHorario, salidor);
 
   let m: Record<Seat, Card[]> = { 0: [], 1: [], 2: [], 3: [] };
   let triunfo: Card;
 
   if (preset) {
-    if (preset.validar ?? true) validarPreset(preset, dealer);
+    if (preset.validar ?? true) validarPreset(preset, dealer, eliminados);
     triunfo = preset.triunfo;
     m = {
       0: preset.manos[0] ?? [],

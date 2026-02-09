@@ -193,31 +193,24 @@ export function dispatch(state: GameState, event: GameEvent): GameState {
         }
       }
 
-      // Detectar fin de serie
-      const cero = (Object.keys(piedrasNext) as unknown as Seat[])
-        .filter(s => piedrasNext[s] <= 0);
-
-      if (cero.length > 0) serieTerminada = true;
+      // Detectar eliminación y fin de serie
+      const { newlyEliminated, totalEliminados, serieTerminada: serieCalc } =
+        computeElimination(piedrasNext, state.eliminados);
+      serieTerminada = serieCalc;
 
       const cantesTuteCantado = { ...state.cantesTuteCantado, [seat]: true };
-
-      const logEntry = { t: "tute", seat, turno: state.bazaN, kind, puntos: 0 } as const;
 
       // Cerrar REO si procede
       let status: GameState["status"] = state.status;
 
       if (state.irADos === null) {
-        // ✅ Caso normal (sin ir a los dos): TUTE cierra el REO siempre
         status = "resumen";
       } else {
-        // Con ir a los dos
         if (seat !== state.irADos) {
-          // ✅ Equipo canta contra el solo → cierra el REO
           status = "resumen";
         }
-        // ❌ Si el solo canta → NO cierra (perdedores ya está vacío arriba)
       }
-      
+
       const cantesCantados = { ...state.cantesCantados };
 
       return {
@@ -229,10 +222,11 @@ export function dispatch(state: GameState, event: GameEvent): GameState {
         perdedores,
         status,
         serieTerminada,
+        eliminados: totalEliminados,
         reoLog: [
           ...state.reoLog,
           { t: "tute", seat, turno: state.bazaN, kind, puntos: 0 } as const,
-          ...(serieTerminada ? [{ t: "finalizarSerie", seatsCero: cero } as const] : []),
+          ...(serieTerminada ? [{ t: "finalizarSerie", seatsCero: newlyEliminated } as const] : []),
           ...(status === "resumen" ? [{ t: "finalizarReo", perdedores } as const] : []),
         ],
       };
@@ -310,9 +304,8 @@ export function dispatch(state: GameState, event: GameEvent): GameState {
       }
 
       const piedrasNext = applyPiedras(state.piedras, piedrasDeltas);
-      const seatsCero = (Object.keys(piedrasNext) as unknown as Seat[])
-        .filter(s => piedrasNext[s] <= 0);
-      const serieTerminada = seatsCero.length > 0;
+      const { newlyEliminated, totalEliminados, serieTerminada } =
+        computeElimination(piedrasNext, state.eliminados);
 
       return {
         ...state,
@@ -320,11 +313,12 @@ export function dispatch(state: GameState, event: GameEvent): GameState {
         perdedores,
         piedras: piedrasNext,
         serieTerminada,
+        eliminados: totalEliminados,
         reoLog: [
           ...state.reoLog,
           { t: "tirarselas", seat, turno: state.bazaN } as const,
           { t: "piedras", deltas: piedrasDeltas } as const,
-          ...(serieTerminada ? [{ t: "finalizarSerie", seatsCero } as const] : []),
+          ...(serieTerminada ? [{ t: "finalizarSerie", seatsCero: newlyEliminated } as const] : []),
           { t: "finalizarReo", perdedores } as const,
         ],
       };
@@ -368,6 +362,7 @@ export function dispatch(state: GameState, event: GameEvent): GameState {
         piedras,                           // ⬅️ piedras reset
         seriePiedrasIniciales: piedrasInicial, // ⬅️ actualizar por si cambió
         serieTerminada: false,             // ⬅️ limpiar flag
+        eliminados: [],                    // ⬅️ nadie eliminado en nueva serie
         reoLog: [],                        // ⬅️ nueva serie, nuevo log
       };
     }
@@ -528,12 +523,8 @@ function resolverBazaInner(state: GameState): GameState {
     }
 
     const piedrasNext = applyPiedras(s1.piedras, piedrasDeltas);
-    // ⬇️ Detectar fin de serie: si algún seat ≤ 0
-    const seatsCero = (Object.keys(piedrasNext) as unknown as Seat[])
-      .filter(s => piedrasNext[s] <= 0);
-
-    const serieTerminada = seatsCero.length > 0;
-
+    const { newlyEliminated, totalEliminados, serieTerminada } =
+      computeElimination(piedrasNext, state.eliminados);
 
     s1 = {
       ...s1,
@@ -541,10 +532,11 @@ function resolverBazaInner(state: GameState): GameState {
       perdedores,
       piedras: piedrasNext,
       serieTerminada,
+      eliminados: totalEliminados,
       reoLog: [
         ...s1.reoLog,
         { t: "piedras", deltas: piedrasDeltas } as const,
-        ...(serieTerminada ? [{ t: "finalizarSerie", seatsCero } as const] : []),
+        ...(serieTerminada ? [{ t: "finalizarSerie", seatsCero: newlyEliminated } as const] : []),
         { t: "finalizarReo", perdedores } as const
       ],
     };
@@ -554,6 +546,19 @@ function resolverBazaInner(state: GameState): GameState {
 }
 
 const SOLO_BONUS_ON_TEAM_WIN = true; // ⬅️ pon a false si NO quieres +2 al solo cuando gana al equipo
+
+/** Calcula eliminación: quién acaba de llegar a 0 y si la serie termina (2+ eliminados) */
+function computeElimination(
+  piedrasNext: Record<Seat, number>,
+  prevEliminados: Seat[]
+): { newlyEliminated: Seat[]; totalEliminados: Seat[]; serieTerminada: boolean } {
+  const newlyEliminated = ([0, 1, 2, 3] as Seat[])
+    .filter(s => piedrasNext[s] <= 0 && !prevEliminados.includes(s));
+  const totalEliminados = [...prevEliminados, ...newlyEliminated];
+  // La serie termina si hay 2+ eliminados en total (solo quedarían 2 vivos)
+  const serieTerminada = totalEliminados.length >= 2;
+  return { newlyEliminated, totalEliminados, serieTerminada };
+}
 
 function clampStone(n: number) {
   return Math.max(0, n|0);

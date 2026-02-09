@@ -22,6 +22,12 @@ const FRASES_RANDOM = [
   "Arriero somos",
   "La habéis pillao gorda",
   "Achiquemán",
+  "De rey parriba",
+  "Llevo un juegazo",
+  "Hasta el más tonto hace relojes",
+  "Muy mal se tié que dar",
+  "Esto es remar pa morir en la orilla",
+  "No te echa ni un manguito",
 ];
 
 interface FraseCondicional {
@@ -194,7 +200,28 @@ export default function App_v2() {
     return () => window.clearInterval(interval);
   }, [game.status, game.activos]);
 
-  // === BOCADILLO: frases condicionales (cantes) ===
+  // === BOCADILLO: "Tengo salida" — el salidor lo dice al empezar a jugar ===
+  const prevStatusRef = React.useRef(game.status);
+  React.useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = game.status;
+
+    // Detectar transición a "jugando" (desde decidiendo_irados o inicial)
+    if (game.status === "jugando" && prev !== "jugando") {
+      const salidor = game.salidor;
+      // Solo IA dice la frase automáticamente (J1 la tiene en el dropdown)
+      if (!seatsHumanos.includes(salidor)) {
+        // ~40% de probabilidad para no ser repetitivo
+        if (Math.random() < 0.4) {
+          window.setTimeout(() => {
+            mostrarBocadillo(salidor, "Tengo salida");
+          }, 600);
+        }
+      }
+    }
+  }, [game.status, game.salidor]);
+
+  // === BOCADILLO: frases condicionales (cantes, tute, tirárselas, piedras) ===
   React.useEffect(() => {
     const log = game.reoLog;
     const prevLen = bocadilloLogLenRef.current;
@@ -208,6 +235,39 @@ export default function App_v2() {
       if (e.t === "tirarselas") {
         mostrarBocadillo(e.seat as Seat, "Me rindo...");
         return;
+      }
+
+      // TUTE: el cantante pregunta antes "¿Cuántos caballos/reyes tenéis?"
+      if (e.t === "tute") {
+        const singer = e.seat as Seat;
+        const frase = e.kind === "caballos"
+          ? "¿Cuántos caballos tenéis?"
+          : "¿Cuántos reyes tenéis?";
+        mostrarBocadillo(singer, frase);
+        return;
+      }
+
+      // Piedras: "Ha perdido un rico" cuando alguien con ≥3 piedras pierde
+      if (e.t === "piedras") {
+        const deltas = (e as any).deltas as { seat: number; delta: number }[];
+        for (const d of deltas) {
+          if (d.delta < 0) {
+            // Calcular piedras que tenía ANTES de perder
+            const piedrasAhora = game.piedras[d.seat as Seat];
+            const piedrasAntes = piedrasAhora - d.delta; // delta es negativo, así que sumamos
+            if (piedrasAntes >= 3) {
+              // Un rival aleatorio dice la frase
+              const otros = game.activos.filter(s => s !== d.seat);
+              if (otros.length > 0) {
+                const quien = otros[Math.floor(Math.random() * otros.length)];
+                window.setTimeout(() => {
+                  mostrarBocadillo(quien, "Ha perdido un rico");
+                }, 1200);
+              }
+              break; // solo una vez por evento
+            }
+          }
+        }
       }
 
       if (e.t === "cante") {
@@ -243,11 +303,10 @@ export default function App_v2() {
     // Evitar reentradas
     if (aiBusyRef.current) return;
 
-    // Si el humano (J1) está activo y no es dealer, y estamos decidiendo → NO actúa la IA
+    // Si el humano (J1) está activo y estamos decidiendo → NO actúa la IA
     const humanMustDecide =
       game.status === "decidiendo_irados" &&
-      game.activos.includes(0 as Seat) &&
-      game.dealer !== 0;
+      game.activos.includes(0 as Seat);
     if (humanMustDecide) return;
 
     // Flag local para saber si este efecto agendó un timer
@@ -364,13 +423,12 @@ export default function App_v2() {
     }
   }, [game]);
 
-  // Mostrar overlay si estamos en "decidiendo_irados" y J1 es activo (no dealer)
+  // Mostrar overlay si estamos en "decidiendo_irados" y J1 es activo
   React.useEffect(() => {
     const isDecidiendo = game.status === "decidiendo_irados";
     const j1Activo = game.activos.includes(0);
-    const j1NoDealer = game.dealer !== 0;
-    setShowDecision(isDecidiendo && j1Activo && j1NoDealer);
-  }, [game.status, game.activos, game.dealer]);
+    setShowDecision(isDecidiendo && j1Activo);
+  }, [game.status, game.activos]);
 
   React.useEffect(() => {
     if (autoRestartSeconds === null) return;
@@ -662,12 +720,12 @@ export default function App_v2() {
     const mano = game.jugadores[seat].mano;
     const activos = game.activos;
 
+    const isEliminated = (game.eliminados ?? []).includes(seat);
     const canJ1Play =
       seat === 0 &&
       game.status === "jugando" &&
       game.turno === 0 &&
-      activos.includes(0 as Seat) &&
-      !isDealer;
+      activos.includes(0 as Seat);
 
     return (
       <div style={{ textAlign: "center", minWidth: 200 }}>
@@ -686,7 +744,13 @@ export default function App_v2() {
             </span>
           )}
 
-          {!activos.includes(seat) && !isDealer && (
+          {isEliminated && (
+            <span className="badge badge--eliminated" title="Eliminado de la serie">
+              Eliminado
+            </span>
+          )}
+
+          {!activos.includes(seat) && !isDealer && !isEliminated && (
             <span style={{ opacity: 0.7 }}>(No juega)</span>
           )}
         </div>
@@ -703,8 +767,7 @@ export default function App_v2() {
               seat === 0 &&
               game.status === "jugando" &&
               game.turno === 0 &&
-              game.activos.includes(0 as Seat) &&
-              !isDealer
+              game.activos.includes(0 as Seat)
             }
             isLegalCard={(card) => isLegalCardForJ1(game, card)}
             onPlay={(c) => {
@@ -856,10 +919,9 @@ export default function App_v2() {
   // === Tipos auxiliares de cantes
   type CanteOpt = { palo: Palo; puntos: 20 | 40 };
 
-  // ¿Mostrar la barra de acciones de J1? (ya lo tienes, por claridad lo usamos)
+  // ¿Mostrar la barra de acciones de J1?
   function shouldShowActionsForJ1(game: GameState): boolean {
-    if (!(game.status === "jugando")) return false;
-    if (game.dealer === 0) return false;
+    if (game.status !== "jugando") return false;
     if (!game.activos.includes(0 as Seat)) return false;
     return true;
   }
@@ -923,9 +985,6 @@ export default function App_v2() {
     if (!game.triunfo) return false;
     // Si la muestra ya es 7, no hay nada que cambiar
     if (game.triunfo.num === 7) return false;
-
-    // J1 no puede ser dealer
-    if (game.dealer === 0) return false;
 
     // J1 debe estar activo
     if (!game.activos.includes(0 as Seat)) return false;
@@ -1075,17 +1134,15 @@ export default function App_v2() {
     );
   }
 
-    // ¿J1 juega este REO (no es dealer y está en activos)?
+    // ¿J1 juega este REO (está en activos)?
   function isJ1Active(game: GameState): boolean {
-    return game.dealer !== 0 && game.activos.includes(0 as Seat);
+    return game.activos.includes(0 as Seat);
   }
 
   // ¿Es legal que J1 juegue esta carta ahora?
   function isLegalCardForJ1(game: GameState, c: Card): boolean {
-    // Debe ser su turno y estar en estado "jugando"
     if (game.status !== "jugando") return false;
     if (game.turno !== 0) return false;
-    if (game.dealer === 0) return false;               // por si acaso: J1 dealer no juega
     if (!game.activos.includes(0 as Seat)) return false;
 
     const mano = game.jugadores[0 as Seat].mano;
@@ -1222,6 +1279,16 @@ export default function App_v2() {
         .badge--solo {
           background: rgba(0,200,120,0.25);
           border-color: rgba(0,255,180,0.35);
+        }
+        .badge--eliminated {
+          background: rgba(255,60,60,0.25);
+          border-color: rgba(255,60,60,0.5);
+          color: #ff6b6b;
+        }
+        .pill.eliminated {
+          opacity: 0.45;
+          border-color: #666;
+          background: rgba(100,100,100,0.15);
         }
         .playerHeaderLine {
           display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -1530,6 +1597,7 @@ export default function App_v2() {
               title="Elige una frase para tu bocadillo"
             >
               <option value="" disabled>Decir algo...</option>
+              <option value="Tengo salida" style={{ color: "#111" }}>Tengo salida</option>
               {FRASES_RANDOM.map((f, i) => (
                 <option key={i} value={f} style={{ color: "#111" }}>{f}</option>
               ))}
@@ -1696,15 +1764,17 @@ export default function App_v2() {
           {([0,1,2,3] as Seat[]).map(s => {
             const val = game.piedras[s];
             const out = val <= 0;
+            const isElim = (game.eliminados ?? []).includes(s);
             return (
               <div
                 key={s}
-                className={`pill ${out ? "stoneOut" : ""}`}
+                className={`pill ${out ? "stoneOut" : ""} ${isElim ? "eliminated" : ""}`}
                 style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between" }}
-                title={out ? "Sin piedras" : `${val} piedras`}
+                title={isElim ? "Eliminado" : out ? "Sin piedras" : `${val} piedras`}
               >
                 <span>
                   <strong>J{s+1}:</strong> {val} {val > 0 ? "●".repeat(Math.min(val, 12)) : "—"}
+                  {isElim && <span style={{ marginLeft: 8, color: "#ff6b6b" }}>(Eliminado)</span>}
                 </span>
               </div>
             );
@@ -1756,8 +1826,18 @@ export default function App_v2() {
             // SERIE terminada: preguntar piedras antes de reiniciar
             setShowPiedrasChoice(true);
           } else {
-            // REO: planificamos dealer rotado y marcamos tipo 'reo'
-            const nextDealer = ((game.dealer + 3) % 4) as Seat;
+            // REO: planificamos dealer rotado (saltando eliminados)
+            const CLOCKWISE: Seat[] = [0, 3, 2, 1];
+            const eliminados = game.eliminados ?? [];
+            const dealerIdx = CLOCKWISE.indexOf(game.dealer);
+            let nextDealer = game.dealer;
+            for (let i = 1; i <= 4; i++) {
+              const candidate = CLOCKWISE[(dealerIdx + i) % CLOCKWISE.length];
+              if (!eliminados.includes(candidate)) {
+                nextDealer = candidate;
+                break;
+              }
+            }
             setPlannedDealer(nextDealer);
             setRestartKind("reo");
             setAutoRestartSeconds(5);

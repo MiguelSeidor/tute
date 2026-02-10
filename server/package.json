@@ -21,8 +21,11 @@
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^8.0.1",
+    "prisma": "^6.9.0",
     "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "tsup": "^8.5.1",
+    "typescript": "~5.9.3"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
@@ -33,9 +36,6 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.10.6",
     "@types/nodemailer": "^7.0.9",
-    "prisma": "^6.9.0",
-    "tsup": "^8.5.1",
-    "tsx": "^4.19.2",
-    "typescript": "~5.9.3"
+    "tsx": "^4.19.2"
   }
 }

@@ -62,6 +62,52 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
   const handRef = useRef<HTMLDivElement>(null);
   const [handScale, setHandScale] = useState(1);
 
+  // ── Trick delay: keep resolved mesa visible for 1.5s ──
+  const [frozenMesa, setFrozenMesa] = useState<{ seat: Seat; card: Card }[] | null>(null);
+  const [trickWinner, setTrickWinner] = useState<Seat | null>(null);
+  const prevMesaLenRef = useRef(0);
+
+  useEffect(() => {
+    if (!gameState) return;
+    const prevLen = prevMesaLenRef.current;
+    const currLen = gameState.mesa.length;
+    prevMesaLenRef.current = currLen;
+
+    // Detect trick resolution: mesa went from having cards to empty
+    if (prevLen >= 3 && currLen === 0 && gameState.ultimoGanadorBaza !== null) {
+      // Keep the previous mesa frozen — we can reconstruct it from the last baza
+      const winner = gameState.ultimoGanadorBaza;
+      const lastBaza = gameState.bazasPorJugador[winner];
+      if (lastBaza && lastBaza.length > 0) {
+        const lastCards = lastBaza[lastBaza.length - 1];
+        // We don't have the seat info from bazasPorJugador, but we have reoLog
+        const log = gameState.reoLog as any[];
+        const mesaCards: { seat: Seat; card: Card }[] = [];
+        // Find the last 'jugar' entries before the last 'resolverBaza'
+        let resolveIdx = -1;
+        for (let i = log.length - 1; i >= 0; i--) {
+          if (log[i].t === 'resolverBaza') { resolveIdx = i; break; }
+        }
+        if (resolveIdx > 0) {
+          for (let i = resolveIdx - 1; i >= 0; i--) {
+            if (log[i].t === 'jugar') {
+              mesaCards.unshift({ seat: log[i].seat as Seat, card: log[i].carta as Card });
+              if (mesaCards.length >= prevLen) break;
+            } else if (log[i].t === 'resolverBaza') break;
+          }
+        }
+        if (mesaCards.length > 0) {
+          setFrozenMesa(mesaCards);
+          setTrickWinner(winner);
+          setTimeout(() => {
+            setFrozenMesa(null);
+            setTrickWinner(null);
+          }, 1500);
+        }
+      }
+    }
+  }, [gameState?.mesa.length, gameState?.ultimoGanadorBaza]);
+
   const recalcHandScale = useCallback(() => {
     const el = handRef.current;
     if (!el) return;
@@ -451,9 +497,14 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
             </div>
             {/* Mesa */}
             <div style={{ gridColumn: '2', gridRow: '2' }}>
-              <div className={`og-mesaBox${anuncio ? ` anuncio-${anuncio.tipo === 'cante' ? 'activo' : anuncio.tipo}` : ''}`} style={{ position: 'relative' }}>
-                <MesaVisual mesa={rotateMesa(gs.mesa, mySeat)} />
-                {anuncio && (
+              <div className={`og-mesaBox${anuncio ? ` anuncio-${anuncio.tipo === 'cante' ? 'activo' : anuncio.tipo}` : ''}${trickWinner !== null ? ' anuncio-activo' : ''}`} style={{ position: 'relative' }}>
+                <MesaVisual mesa={rotateMesa(frozenMesa || gs.mesa, mySeat)} />
+                {trickWinner !== null && (
+                  <div className="anuncio-overlay cante" key={`baza-${gs.bazaN}`}>
+                    {gs.playerNames[trickWinner]} gana la baza
+                  </div>
+                )}
+                {anuncio && trickWinner === null && (
                   <div className={`anuncio-overlay ${anuncio.tipo}`} key={anuncio.texto}>
                     {anuncio.texto}
                   </div>

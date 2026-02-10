@@ -8,14 +8,38 @@ datasource db {
 }
 
 model User {
-  id               String    @id @default(uuid())
-  email            String    @unique
-  username         String    @unique
+  id               String       @id @default(uuid())
+  email            String       @unique
+  username         String       @unique
   password         String
-  resetToken       String?   @unique
+  resetToken       String?      @unique
   resetTokenExpiry DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  gamePlayers      GamePlayer[]
 
   @@map("users")
+}
+
+model Game {
+  id           String       @id @default(uuid())
+  roomName     String
+  piedrasCount Int
+  completedAt  DateTime     @default(now())
+  players      GamePlayer[]
+
+  @@map("games")
+}
+
+model GamePlayer {
+  id           String  @id @default(uuid())
+  gameId       String
+  userId       String
+  seat         Int
+  finalPiedras Int
+  isWinner     Boolean
+  game         Game    @relation(fields: [gameId], references: [id])
+  user         User    @relation(fields: [userId], references: [id])
+
+  @@map("game_players")
 }

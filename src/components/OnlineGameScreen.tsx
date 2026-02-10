@@ -243,6 +243,7 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
 
   function canCambiar7(): boolean {
     if (gs.status !== 'decidiendo_irados' && gs.status !== 'jugando') return false;
+    if (gs.bazaN > 0) return false;
     if (!gs.triunfo || gs.triunfo.num === 7) return false;
     if (!gs.activos.includes(mySeat)) return false;
     return gs.myHand.some(c => c.palo === gs.triunfo!.palo && c.num === 7);
@@ -576,6 +577,40 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
               </div>
             </div>
           )}
+
+          {/* Bazas del compañero (cuando alguien va a los dos y yo estoy en equipo) */}
+          {gs.irADos !== null && gs.irADos !== mySeat && gs.activos.includes(mySeat) && (() => {
+            const solo = gs.irADos as Seat;
+            const teammate = gs.activos.find(s => s !== solo && s !== mySeat) ?? null;
+            if (teammate === null) return null;
+            const teamBazas = gs.bazasPorJugador[teammate] || [];
+            return (
+              <div>
+                <h3 style={{ margin: '12px 0 6px' }}>Bazas de {gs.playerNames[teammate]}</h3>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8, minHeight: 64,
+                  overflowX: 'auto', overflowY: 'hidden', padding: '8px 10px',
+                  border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, background: 'rgba(0,0,0,0.2)',
+                }}>
+                  {teamBazas.length === 0 ? (
+                    <span style={{ opacity: 0.7 }}>Tu compañero aún no ha ganado bazas</span>
+                  ) : teamBazas.map((baza, idx) => {
+                    const pts = baza.reduce((s, c) => s + cardPts(c), 0);
+                    return (
+                      <div key={idx} title={`Baza ${idx + 1} - ${pts} pts`} style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '6px 10px', borderRadius: 999,
+                        background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.25)',
+                      }}>
+                        <span style={{ fontSize: 12, opacity: 0.9 }}>B{idx + 1}</span>
+                        {baza.map((c, j) => <Carta key={j} carta={c} mini style={{ width: 32, margin: 2 }} />)}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* SIDEBAR */}

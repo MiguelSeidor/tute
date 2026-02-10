@@ -1,4 +1,4 @@
-import type { AuthResponse, ErrorResponse, RegisterRequest, LoginRequest, ForgotPasswordRequest, ResetPasswordRequest, User } from '@shared/types';
+import type { AuthResponse, ErrorResponse, RegisterRequest, LoginRequest, ForgotPasswordRequest, ResetPasswordRequest, User, RankingEntry, GameHistoryEntry, PlayerStats } from '@shared/types';
 
 const API_BASE = '/api';
 
@@ -64,4 +64,19 @@ export async function resetPassword(data: ResetPasswordRequest): Promise<{ messa
     body: JSON.stringify(data),
   });
   return handleResponse<{ message: string }>(response);
+}
+
+export async function getRanking(): Promise<{ ranking: RankingEntry[] }> {
+  const response = await fetch(`${API_BASE}/stats/ranking`, { credentials: 'include' });
+  return handleResponse<{ ranking: RankingEntry[] }>(response);
+}
+
+export async function getHistory(): Promise<{ games: GameHistoryEntry[] }> {
+  const response = await fetch(`${API_BASE}/stats/history`, { credentials: 'include' });
+  return handleResponse<{ games: GameHistoryEntry[] }>(response);
+}
+
+export async function getMyStats(): Promise<{ stats: PlayerStats }> {
+  const response = await fetch(`${API_BASE}/stats/me`, { credentials: 'include' });
+  return handleResponse<{ stats: PlayerStats }>(response);
 }

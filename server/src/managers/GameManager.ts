@@ -1,15 +1,18 @@
 import type { GameState, GameEvent, Seat, GameStateView, Room } from '@shared/types';
 import { initGame } from '@engine/tuteInit';
 import { dispatch } from '@engine/tuteReducer';
+import { prisma } from '../db/client.js';
 
 const CLOCKWISE: Seat[] = [0, 3, 2, 1];
 
 interface GameSession {
   roomId: string;
+  roomName: string;
   state: GameState;
   seatToUserId: Record<Seat, string>;
   userIdToSeat: Map<string, Seat>;
   playerNames: Record<Seat, string>;
+  resultSaved: boolean;
 
   // Ir-a-dos phase tracking (server manages per-player turns)
   irADosPending: Seat[];    // active players who haven't decided yet
@@ -42,7 +45,8 @@ export class GameManager {
     }
 
     const session: GameSession = {
-      roomId: room.id, state, seatToUserId, userIdToSeat, playerNames,
+      roomId: room.id, roomName: room.name, state, seatToUserId, userIdToSeat, playerNames,
+      resultSaved: false,
       irADosPending: [...state.activos],
       irADosCurrent: 0,
     };
@@ -128,6 +132,14 @@ export class GameManager {
       session.state = newState;
     }
 
+    // Save game result when series ends (detected after any action)
+    if (newState.serieTerminada && newState.status === 'resumen' && !session.resultSaved) {
+      session.resultSaved = true;
+      this.saveGameResult(session, newState).catch(err =>
+        console.error('Error guardando resultado de partida:', err)
+      );
+    }
+
     // Auto-start next round after finalizarReo (if series not over)
     if (event.type === 'finalizarReo' && !newState.serieTerminada) {
       // Rotate dealer clockwise, skipping eliminated
@@ -152,6 +164,7 @@ export class GameManager {
 
     // After resetSerie, auto-start first round
     if (event.type === 'resetSerie') {
+      session.resultSaved = false;
       const randDealer = CLOCKWISE[Math.floor(Math.random() * 4)];
       newState = dispatch(newState, { type: 'startRound', dealer: randDealer });
       session.state = newState;
@@ -224,6 +237,31 @@ export class GameManager {
       playerNames,
       playerConnected,
     };
+  }
+
+  private async saveGameResult(session: GameSession, state: GameState): Promise<void> {
+    const seats = [0, 1, 2, 3] as Seat[];
+    const eliminados = state.eliminados ?? [];
+
+    await prisma.game.create({
+      data: {
+        roomName: session.roomName,
+        piedrasCount: state.seriePiedrasIniciales,
+        players: {
+          create: seats.map(seat => ({
+            userId: session.seatToUserId[seat],
+            seat,
+            finalPiedras: state.piedras[seat],
+            isWinner: !eliminados.includes(seat) && state.piedras[seat] > 0,
+          })),
+        },
+      },
+    });
+
+    console.log(`Partida guardada: sala=${session.roomId}, ganadores=${
+      seats.filter(s => !eliminados.includes(s) && state.piedras[s] > 0)
+        .map(s => session.playerNames[s]).join(', ')
+    }`);
   }
 
   deleteGame(roomId: string): void {

@@ -36,6 +36,34 @@ export interface ResetPasswordRequest {
   password: string;
 }
 
+// ─── Stats / Ranking types ──────────────────────────────────
+
+export interface RankingEntry {
+  userId: string;
+  username: string;
+  wins: number;
+  gamesPlayed: number;
+  winRate: number;
+}
+
+export interface GameHistoryEntry {
+  id: string;
+  roomName: string;
+  piedrasCount: number;
+  completedAt: string;
+  players: { username: string; isWinner: boolean; finalPiedras: number }[];
+  myResult: 'win' | 'loss';
+}
+
+export interface PlayerStats {
+  gamesPlayed: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  currentStreak: number;
+  bestStreak: number;
+}
+
 // ─── Socket.io / Multiplayer types ─────────────────────────
 
 import type { Card, Seat, GameState, GameEvent, LogEvent, Palo } from '../src/engine/tuteTypes';

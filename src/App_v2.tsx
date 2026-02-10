@@ -15,6 +15,7 @@ import { useSocket } from "./context/SocketContext";
 import { AuthForm } from "./components/AuthForm";
 import { LobbyScreen } from "./components/LobbyScreen";
 import { OnlineGameScreen } from "./components/OnlineGameScreen";
+import { StatsScreen } from "./components/StatsScreen";
 
 // ========================== FRASES BOCADILLOS ==========================
 
@@ -38,7 +39,7 @@ const FRASES_RANDOM = [
 
 const FRASE_RIVAL_CANTE = "No.. si tos cantaremos";
 
-type GameMode = "offline" | "online" | null;
+type GameMode = "offline" | "online" | "stats" | null;
 
 // Componente separado para el modo online (necesita useAuth y useSocket hooks)
 function OnlineScreen({ bodyStyle, onBack }: { bodyStyle: string; onBack: () => void }) {
@@ -1318,6 +1319,10 @@ export default function App_v2() {
               Juego Online
               <div style={{ fontSize: ".85rem", fontWeight: 400, opacity: .7, marginTop: 8 }}>Juega con amigos</div>
             </button>
+            <button className="mode-btn" onClick={() => setGameMode("stats")}>
+              Ranking
+              <div style={{ fontSize: ".85rem", fontWeight: 400, opacity: .7, marginTop: 8 }}>Estadísticas y clasificación</div>
+            </button>
           </div>
           {user && (
             <button
@@ -1338,6 +1343,15 @@ export default function App_v2() {
 
   if (gameMode === "online") {
     return <OnlineScreen bodyStyle={bodyStyle} onBack={() => setGameMode(null)} />;
+  }
+
+  if (gameMode === "stats") {
+    return (
+      <>
+        <style>{bodyStyle}</style>
+        <StatsScreen onBack={() => setGameMode(null)} />
+      </>
+    );
   }
 
   // Render (Offline mode)

@@ -10,6 +10,11 @@ import { iaEligeCarta, iaDebeIrADos, iaDebeCambiar7, iaDebeTirarselas } from "./
 import { GameError } from "./engine/tuteTypes";
 import { puedeJugar } from "./engine/tuteLogic";
 import Simulador4 from "./ui/Simulador4";
+import { useAuth } from "./context/AuthContext";
+import { useSocket } from "./context/SocketContext";
+import { AuthForm } from "./components/AuthForm";
+import { LobbyScreen } from "./components/LobbyScreen";
+import { OnlineGameScreen } from "./components/OnlineGameScreen";
 
 // ========================== FRASES BOCADILLOS ==========================
 
@@ -35,7 +40,47 @@ const FRASE_RIVAL_CANTE = "No.. si tos cantaremos";
 
 type GameMode = "offline" | "online" | null;
 
+// Componente separado para el modo online (necesita useAuth y useSocket hooks)
+function OnlineScreen({ bodyStyle, onBack }: { bodyStyle: string; onBack: () => void }) {
+  const { user, loading } = useAuth();
+  const { currentRoom, gameState } = useSocket();
+
+  if (loading) {
+    return (
+      <>
+        <style>{bodyStyle}</style>
+        <div className="mode-screen" style={{ gap: 24 }}>
+          <p style={{ fontSize: "1.2rem", opacity: 0.8 }}>Cargando...</p>
+        </div>
+      </>
+    );
+  }
+
+  if (!user) {
+    return (
+      <>
+        <style>{bodyStyle}</style>
+        <AuthForm onBack={onBack} />
+      </>
+    );
+  }
+
+  // In a game
+  if (currentRoom?.status === 'playing' && gameState) {
+    return <OnlineGameScreen onLeave={onBack} />;
+  }
+
+  // Lobby
+  return (
+    <>
+      <style>{bodyStyle}</style>
+      <LobbyScreen onBack={onBack} />
+    </>
+  );
+}
+
 export default function App_v2() {
+  const { user, logout } = useAuth();
   const [gameMode, setGameMode] = useState<GameMode>(null);
 
   const [game, setGame] = useState<GameState>(() => {
@@ -1274,26 +1319,25 @@ export default function App_v2() {
               <div style={{ fontSize: ".85rem", fontWeight: 400, opacity: .7, marginTop: 8 }}>Juega con amigos</div>
             </button>
           </div>
+          {user && (
+            <button
+              onClick={() => logout()}
+              style={{
+                marginTop: 8, padding: "8px 24px", borderRadius: 8, cursor: "pointer",
+                background: "rgba(255,60,60,0.2)", color: "#fff", fontSize: "0.9rem",
+                border: "1px solid rgba(255,60,60,0.4)",
+              }}
+            >
+              Cerrar sesión ({user.username})
+            </button>
+          )}
         </div>
       </>
     );
   }
 
   if (gameMode === "online") {
-    return (
-      <>
-        <style>{bodyStyle}</style>
-        <div className="mode-screen" style={{ gap: 24 }}>
-          <h1 style={{ fontSize: "clamp(1.6rem, 4vw, 2.5rem)", margin: 0, textShadow: "0 2px 8px rgba(0,0,0,.4)" }}>Juego Online</h1>
-          <p style={{ opacity: 0.7, maxWidth: 500, textAlign: "center", fontSize: "clamp(.95rem, 2vw, 1.1rem)", lineHeight: 1.5 }}>
-            El modo online estará disponible próximamente. Aquí aparecerá el Login para jugar con amigos.
-          </p>
-          <button className="mode-btn" onClick={() => setGameMode(null)} style={{ padding: "14px 32px" }}>
-            Volver
-          </button>
-        </div>
-      </>
-    );
+    return <OnlineScreen bodyStyle={bodyStyle} onBack={() => setGameMode(null)} />;
   }
 
   // Render (Offline mode)
@@ -1505,7 +1549,22 @@ export default function App_v2() {
         <div className="headerBar">
           <h2 style={{ margin: 0 }}>Tute Parrillano</h2>
           <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-            <button 
+            <button
+              onClick={() => {
+                if (window.confirm('¿Salir de la partida offline y volver al menú principal?')) {
+                  if (aiTimerRef.current) { clearTimeout(aiTimerRef.current); aiTimerRef.current = null; }
+                  setGameMode(null);
+                }
+              }}
+              style={{
+                background: 'rgba(255,255,255,0.15)', color: '#fff', padding: '4px 12px',
+                borderRadius: 6, cursor: 'pointer', fontSize: '0.85rem',
+                border: '1px solid rgba(255,255,255,0.3)',
+              }}
+            >
+              Volver
+            </button>
+            <button
               onClick={() => {
                   // 1) Parar partida actual
                   setGame(prev => ({

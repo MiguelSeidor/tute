@@ -9,7 +9,7 @@
     "dev:backend": "cd server && npm run dev",
     "build": "vite build && cd server && npm install && npx prisma generate && npm run build",
     "build:backend": "cd server && npm run build",
-    "start": "cd server && npx prisma migrate deploy && npm start",
+    "start": "cd server && (npx prisma migrate deploy || echo 'Migration skipped, will retry on next deploy') && npm start",
     "lint": "eslint .",
     "preview": "vite preview"
   },

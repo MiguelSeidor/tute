@@ -30,3 +30,4 @@ dist-ssr
 
 # Backend build
 server/dist
+server/public

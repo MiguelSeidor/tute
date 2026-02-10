@@ -7,8 +7,9 @@
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
     "dev:frontend": "vite",
     "dev:backend": "cd server && npm run dev",
-    "build": "tsc -b && vite build",
+    "build": "vite build && cd server && npx prisma generate && npx prisma migrate deploy && npm run build",
     "build:backend": "cd server && npm run build",
+    "start": "cd server && npm start",
     "lint": "eslint .",
     "preview": "vite preview"
   },

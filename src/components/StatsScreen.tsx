@@ -70,20 +70,22 @@ export function StatsScreen({ onBack }: { onBack: () => void }) {
           >
             Volver
           </button>
-          <button
-            className="mode-btn"
-            onClick={async () => {
-              await fetch('/api/stats/dev/simulate', { method: 'POST', credentials: 'include' });
-              setTab(t => t); // force re-render
-              setLoading(true);
-              if (tab === 'ranking') api.getRanking().then(r => setRanking(r.ranking)).finally(() => setLoading(false));
-              else if (tab === 'history') api.getHistory().then(r => setHistory(r.games)).finally(() => setLoading(false));
-              else api.getMyStats().then(r => setStats(r.stats)).finally(() => setLoading(false));
-            }}
-            style={{ padding: '10px 20px', fontSize: '0.85rem', opacity: 0.6 }}
-          >
-            Simular partida (dev)
-          </button>
+          {import.meta.env.DEV && (
+            <button
+              className="mode-btn"
+              onClick={async () => {
+                await fetch('/api/stats/dev/simulate', { method: 'POST', credentials: 'include' });
+                setTab(t => t); // force re-render
+                setLoading(true);
+                if (tab === 'ranking') api.getRanking().then(r => setRanking(r.ranking)).finally(() => setLoading(false));
+                else if (tab === 'history') api.getHistory().then(r => setHistory(r.games)).finally(() => setLoading(false));
+                else api.getMyStats().then(r => setStats(r.stats)).finally(() => setLoading(false));
+              }}
+              style={{ padding: '10px 20px', fontSize: '0.85rem', opacity: 0.6 }}
+            >
+              Simular partida (dev)
+            </button>
+          )}
         </div>
       </div>
     </div>

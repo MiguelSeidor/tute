@@ -14,10 +14,9 @@ interface AuthSocket extends Socket {
 
 export function setupSocketServer(httpServer: HttpServer) {
   const io = new Server(httpServer, {
-    cors: {
-      origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-      credentials: true,
-    },
+    cors: process.env.NODE_ENV === 'production'
+      ? {}
+      : { origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true },
   });
 
   const roomManager = new RoomManager();

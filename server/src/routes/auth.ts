@@ -8,10 +8,11 @@ import { sendResetEmail } from '../utils/email.js';
 
 const router = Router();
 
+const isProduction = process.env.NODE_ENV === 'production';
 const COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
+  secure: isProduction,
+  sameSite: (isProduction ? 'strict' : 'lax') as 'strict' | 'lax',
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días
 };
 

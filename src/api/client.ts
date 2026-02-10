@@ -1,4 +1,4 @@
-import type { AuthResponse, ErrorResponse, RegisterRequest, LoginRequest, User } from '@shared/types';
+import type { AuthResponse, ErrorResponse, RegisterRequest, LoginRequest, ForgotPasswordRequest, ResetPasswordRequest, User } from '@shared/types';
 
 const API_BASE = '/api';
 
@@ -44,4 +44,24 @@ export async function getCurrentUser(): Promise<{ user: User }> {
     credentials: 'include',
   });
   return handleResponse<{ user: User }>(response);
+}
+
+export async function forgotPassword(data: ForgotPasswordRequest): Promise<{ message: string }> {
+  const response = await fetch(`${API_BASE}/auth/forgot-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  return handleResponse<{ message: string }>(response);
+}
+
+export async function resetPassword(data: ResetPasswordRequest): Promise<{ message: string }> {
+  const response = await fetch(`${API_BASE}/auth/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  return handleResponse<{ message: string }>(response);
 }

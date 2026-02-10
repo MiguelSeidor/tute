@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
+import crypto from 'crypto';
 import { prisma } from '../db/client.js';
 import { hashPassword, comparePassword, generateToken } from '../utils/auth.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { sendResetEmail } from '../utils/email.js';
 
 const router = Router();
 
@@ -131,6 +133,96 @@ router.get('/me', authMiddleware, async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en /me:', error);
     res.status(500).json({ error: 'Error al obtener usuario' });
+  }
+});
+
+// POST /api/auth/forgot-password
+router.post('/forgot-password', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      res.status(400).json({ error: 'El email es obligatorio' });
+      return;
+    }
+
+    // Always respond success to not reveal if email exists
+    const successMsg = { message: 'Si el email está registrado, recibirás instrucciones para restablecer tu contraseña' };
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      res.json(successMsg);
+      return;
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { resetToken, resetTokenExpiry },
+    });
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const resetUrl = `${frontendUrl}?resetToken=${resetToken}`;
+
+    try {
+      await sendResetEmail(email, resetUrl);
+    } catch (emailErr) {
+      console.error('Error enviando email de reset:', emailErr);
+      res.status(500).json({ error: 'Error al enviar el email. Verifica la configuración SMTP.' });
+      return;
+    }
+
+    res.json(successMsg);
+  } catch (error) {
+    console.error('Error en forgot-password:', error);
+    res.status(500).json({ error: 'Error al procesar la solicitud' });
+  }
+});
+
+// POST /api/auth/reset-password
+router.post('/reset-password', async (req: Request, res: Response) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+      res.status(400).json({ error: 'Token y contraseña son obligatorios' });
+      return;
+    }
+
+    if (password.length < 6) {
+      res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+      return;
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        resetToken: token,
+        resetTokenExpiry: { gt: new Date() },
+      },
+    });
+
+    if (!user) {
+      res.status(400).json({ error: 'El enlace es inválido o ha expirado' });
+      return;
+    }
+
+    const hashedPassword = await hashPassword(password);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        resetToken: null,
+        resetTokenExpiry: null,
+      },
+    });
+
+    res.json({ message: 'Contraseña actualizada correctamente' });
+  } catch (error) {
+    console.error('Error en reset-password:', error);
+    res.status(500).json({ error: 'Error al restablecer la contraseña' });
   }
 });
 

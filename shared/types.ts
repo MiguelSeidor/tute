@@ -27,6 +27,15 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  password: string;
+}
+
 // ─── Socket.io / Multiplayer types ─────────────────────────
 
 import type { Card, Seat, GameState, GameEvent, LogEvent, Palo } from '../src/engine/tuteTypes';

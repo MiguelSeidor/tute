@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import { Carta, MesaVisual, PanelTriunfo } from '../ui/Primitives';
@@ -58,6 +58,21 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
   const isHost = currentRoom?.hostUserId === user?.id;
   const [error, setError] = useState('');
   const [errorTimer, setErrorTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const handRef = useRef<HTMLDivElement>(null);
+  const [handScale, setHandScale] = useState(1);
+
+  const recalcHandScale = useCallback(() => {
+    const el = handRef.current;
+    if (!el) return;
+    const containerW = el.parentElement?.clientWidth ?? el.clientWidth;
+    const neededW = el.scrollWidth;
+    if (neededW > containerW && containerW > 0) {
+      setHandScale(Math.max(0.65, containerW / neededW));
+    } else {
+      setHandScale(1);
+    }
+  }, []);
 
   if (!gameState) {
     return (
@@ -170,6 +185,13 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
     if (!phraseEvent) return;
     mostrarBocadillo(phraseEvent.seat, phraseEvent.texto);
   }, [phraseEvent]);
+
+  // Auto-scale hand to fit container
+  useEffect(() => {
+    recalcHandScale();
+    window.addEventListener('resize', recalcHandScale);
+    return () => window.removeEventListener('resize', recalcHandScale);
+  }, [recalcHandScale, gs.myHand.length]);
 
   function showError(msg: string) {
     setError(msg);
@@ -330,14 +352,42 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
         .og-bocadillo--below::after { bottom: 100%; left: 50%; transform: translateX(-50%); border-bottom: 8px solid rgba(255,255,255,0.95); }
         @media (max-width: 900px) {
           .og-page { grid-template-columns: 1fr; }
+          .og-sidebar-toggle { display: flex !important; }
+          .og-sidebar { display: none; }
+          .og-sidebar.og-sidebar--open { display: block; }
+        }
+        @media (max-width: 600px) {
+          :root {
+            --card-w: clamp(56px, 14vw, 80px);
+            --npc-card-w: 38px;
+          }
+          .og-mesaBox {
+            width: calc(var(--card-w) * 4.5) !important;
+            height: calc(var(--card-h) * 2.8) !important;
+          }
+          .og-bocadillo { font-size: 11px; padding: 6px 10px; }
+          .anuncio-overlay { font-size: 14px !important; padding: 8px 16px !important; }
+        }
+        @media (max-width: 400px) {
+          :root {
+            --card-w: clamp(48px, 16vw, 64px);
+            --npc-card-w: 32px;
+          }
+        }
+        .og-sidebar-toggle {
+          display: none; align-items: center; justify-content: center;
+          gap: 6px; padding: 8px 16px; border-radius: 8px; cursor: pointer;
+          background: rgba(255,255,255,0.12); color: #fff; font-weight: 600;
+          border: 1px solid rgba(255,255,255,0.3); font-size: 0.85rem;
+          width: 100%;
         }
       `}</style>
 
       <div className="og-page">
         <div className="og-board">
           {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <h2 style={{ margin: 0 }}>Tute Parrillano Online</h2>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <h2 style={{ margin: 0, fontSize: 'clamp(1rem, 3vw, 1.5rem)' }}>Tute Parrillano Online</h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: '0.85rem', opacity: 0.7 }}>
                 {gs.status === 'decidiendo_irados' ? '🗳 Decidiendo IR A LOS DOS...' :
@@ -382,7 +432,7 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
           {/* Board: 4 corners */}
           <div style={{
             display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gridTemplateRows: '1fr auto 1fr',
-            gap: 12, alignItems: 'center', justifyItems: 'center',
+            gap: 'clamp(4px, 1.5vw, 12px)', alignItems: 'center', justifyItems: 'center',
           }}>
             {/* Top player */}
             <div style={{ gridColumn: '2', gridRow: '1', position: 'relative' }}>
@@ -426,19 +476,23 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
           </div>
 
           {/* My hand */}
-          <div style={{
-            display: 'flex', justifyContent: 'center', flexWrap: 'nowrap',
-            gap: 6, minHeight: 'var(--card-h)', overflow: 'hidden',
-          }}>
-            {gs.myHand.length === 0 ? (
-              <span style={{ opacity: 0.5, alignSelf: 'center' }}>Sin cartas</span>
-            ) : gs.myHand.map(card => {
-              const legal = isLegal(card);
-              return (
-                <Carta key={`${card.palo}-${card.num}`} carta={card} legal={legal}
-                  onClick={() => { if (legal) handleAction({ type: 'jugarCarta', seat: mySeat, card }); }} />
-              );
-            })}
+          <div style={{ overflow: 'hidden', minHeight: 'var(--card-h)' }}>
+            <div ref={handRef} style={{
+              display: 'flex', justifyContent: 'center', flexWrap: 'nowrap',
+              gap: 6,
+              transform: handScale < 1 ? `scale(${handScale})` : undefined,
+              transformOrigin: 'center bottom',
+            }}>
+              {gs.myHand.length === 0 ? (
+                <span style={{ opacity: 0.5, alignSelf: 'center' }}>Sin cartas</span>
+              ) : gs.myHand.map(card => {
+                const legal = isLegal(card);
+                return (
+                  <Carta key={`${card.palo}-${card.num}`} carta={card} legal={legal}
+                    onClick={() => { if (legal) handleAction({ type: 'jugarCarta', seat: mySeat, card }); }} />
+                );
+              })}
+            </div>
           </div>
 
           {/* Actions */}
@@ -473,7 +527,8 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
                 }
               }}
               style={{
-                padding: '6px 10px', borderRadius: 6, fontSize: 13,
+                padding: 'clamp(4px, 1.5vw, 6px) clamp(6px, 2vw, 10px)', borderRadius: 6,
+                fontSize: 'clamp(11px, 2.5vw, 13px)',
                 background: 'rgba(255,255,255,0.12)', color: '#fff',
                 border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer',
                 maxWidth: 200,
@@ -524,7 +579,10 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
         </div>
 
         {/* SIDEBAR */}
-        <aside className="og-sidebar">
+        <button className="og-sidebar-toggle" onClick={() => setSidebarOpen(v => !v)}>
+          Puntos {sidebarOpen ? '▲' : '▼'}
+        </button>
+        <aside className={`og-sidebar${sidebarOpen ? ' og-sidebar--open' : ''}`}>
           <h3 style={{ marginTop: 0 }}>Puntos</h3>
           {([0, 1, 2, 3] as Seat[]).map(s => (
             <div key={s} className={`og-pill ${gs.perdedores.includes(s) ? 'loser' : ''} ${gs.eliminados.includes(s) ? 'eliminated' : ''}`}>
@@ -570,7 +628,8 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
 
 function btnStyle(bg?: string): React.CSSProperties {
   return {
-    padding: '8px 16px', borderRadius: 6, fontSize: '0.9rem', cursor: 'pointer',
+    padding: 'clamp(6px, 1.5vw, 8px) clamp(10px, 2.5vw, 16px)', borderRadius: 6,
+    fontSize: 'clamp(11px, 2.5vw, 14px)', cursor: 'pointer',
     background: bg || 'rgba(255,255,255,0.12)', color: '#fff',
     border: '1px solid rgba(255,255,255,0.3)', fontWeight: 600,
   };
@@ -588,7 +647,7 @@ function OnlinePlayerBox({ gs, seat, mySeat }: { gs: GameStateView; seat: Seat; 
   const cardCount = isMe ? gs.myHand.length : (gs.otherPlayerCardCounts[seat] ?? 0);
 
   return (
-    <div style={{ textAlign: 'center', minWidth: 200, opacity: isConnected ? 1 : 0.5 }}>
+    <div style={{ textAlign: 'center', minWidth: 'clamp(120px, 30vw, 200px)', opacity: isConnected ? 1 : 0.5 }}>
       <div className="playerHeaderLine">
         <span style={{ fontWeight: isMe ? 'bold' : 'normal' }}>
           {name} {isMe && '(tú)'}
@@ -664,6 +723,7 @@ function ResumenModal({ gs, onAction }: { gs: GameStateView; onAction: (a: any) 
       }}>
         <h2 style={{ marginTop: 0 }}>Resumen del REO</h2>
 
+        <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
@@ -712,6 +772,7 @@ function ResumenModal({ gs, onAction }: { gs: GameStateView; onAction: (a: any) 
             })}
           </tbody>
         </table>
+        </div>
 
         <div style={{ marginTop: 16, display: 'flex', gap: 16, justifyContent: 'space-between', flexWrap: 'wrap' }}>
           <div>

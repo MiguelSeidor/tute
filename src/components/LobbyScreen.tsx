@@ -59,7 +59,8 @@ export function LobbyScreen({ onBack }: { onBack: () => void }) {
           </p>
 
           {/* Player seats */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
+          <style>{`@media (max-width: 500px) { .lobby-seats { grid-template-columns: 1fr !important; } }`}</style>
+          <div className="lobby-seats" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
             {([0, 1, 2, 3] as const).map(seat => {
               const player = currentRoom.players.find(p => p.seat === seat);
               const isMe = player?.userId === user?.id;

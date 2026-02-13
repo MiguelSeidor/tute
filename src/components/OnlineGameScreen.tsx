@@ -60,6 +60,7 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
   const [errorTimer, setErrorTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   const handRef = useRef<HTMLDivElement>(null);
   const [handScale, setHandScale] = useState(1);
+  const [showBazas, setShowBazas] = useState(false);
 
   // ── Trick winner overlay: detect when mesa is full (all active played) ──
   const [trickWinner, setTrickWinner] = useState<Seat | null>(null);
@@ -459,8 +460,8 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
 
           {/* Board: 4 corners */}
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gridTemplateRows: '1fr auto 1fr',
-            gap: 'clamp(4px, 1.5vw, 12px)', alignItems: 'center', justifyItems: 'center',
+            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gridTemplateRows: 'auto auto auto',
+            gap: 'clamp(2px, 1vw, 8px)', alignItems: 'center', justifyItems: 'center',
           }}>
             {/* Top player */}
             <div style={{ gridColumn: '2', gridRow: '1', position: 'relative' }}>
@@ -529,7 +530,7 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
           </div>
 
           {/* Actions */}
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap', alignItems: 'center' }}>
             {gs.status === 'decidiendo_irados' && gs.activos.includes(mySeat) && isMyTurn && (
               <>
                 <button style={btnStyle()} onClick={() => handleAction({ type: 'declareIrADos', seat: mySeat })}>Ir a los dos</button>
@@ -550,7 +551,11 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
             {gs.status === 'jugando' && isMyTurn && gs.mesa.length === 0 && gs.bazaN > 0 && (
               <button style={btnStyle('rgba(255,60,60,0.25)')} onClick={() => handleAction({ type: 'tirarselas', seat: mySeat })}>Tirárselas</button>
             )}
-            {/* Phrase selector */}
+            {gs.activos.includes(mySeat) && (
+              <button style={btnStyle()} onClick={() => setShowBazas(true)}>
+                Bazas ({myBazas.length})
+              </button>
+            )}
             <select
               value=""
               onChange={(e) => {
@@ -582,67 +587,10 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
             )}
           </div>
 
-          {/* My bazas */}
-          {gs.activos.includes(mySeat) && (
-            <div>
-              <h3 style={{ margin: '12px 0 6px' }}>Mis bazas</h3>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 8, minHeight: 64,
-                overflowX: 'auto', overflowY: 'hidden', padding: '8px 10px',
-                border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, background: 'rgba(0,0,0,0.2)',
-              }}>
-                {myBazas.length === 0 ? (
-                  <span style={{ opacity: 0.7 }}>Aún no has ganado ninguna baza</span>
-                ) : myBazas.map((baza, idx) => {
-                  const pts = baza.reduce((s, c) => s + cardPts(c), 0);
-                  return (
-                    <div key={idx} title={`Baza ${idx + 1} - ${pts} pts`} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6,
-                      padding: '6px 10px', borderRadius: 999,
-                      background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.25)',
-                    }}>
-                      <span style={{ fontSize: 12, opacity: 0.9 }}>B{idx + 1}</span>
-                      {baza.map((c, j) => <Carta key={j} carta={c} mini style={{ width: 32, margin: 2 }} />)}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          {/* Bazas modal */}
+          {showBazas && (
+            <BazasModal gs={gs} mySeat={mySeat} onClose={() => setShowBazas(false)} />
           )}
-
-          {/* Bazas del compañero (cuando alguien va a los dos y yo estoy en equipo) */}
-          {gs.irADos !== null && gs.irADos !== mySeat && gs.activos.includes(mySeat) && (() => {
-            const solo = gs.irADos as Seat;
-            const teammate = gs.activos.find(s => s !== solo && s !== mySeat) ?? null;
-            if (teammate === null) return null;
-            const teamBazas = gs.bazasPorJugador[teammate] || [];
-            return (
-              <div>
-                <h3 style={{ margin: '12px 0 6px' }}>Bazas de {gs.playerNames[teammate]}</h3>
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8, minHeight: 64,
-                  overflowX: 'auto', overflowY: 'hidden', padding: '8px 10px',
-                  border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, background: 'rgba(0,0,0,0.2)',
-                }}>
-                  {teamBazas.length === 0 ? (
-                    <span style={{ opacity: 0.7 }}>Tu compañero aún no ha ganado bazas</span>
-                  ) : teamBazas.map((baza, idx) => {
-                    const pts = baza.reduce((s, c) => s + cardPts(c), 0);
-                    return (
-                      <div key={idx} title={`Baza ${idx + 1} - ${pts} pts`} style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        padding: '6px 10px', borderRadius: 999,
-                        background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.25)',
-                      }}>
-                        <span style={{ fontSize: 12, opacity: 0.9 }}>B{idx + 1}</span>
-                        {baza.map((c, j) => <Carta key={j} carta={c} mini style={{ width: 32, margin: 2 }} />)}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })()}
         </div>
 
         </div>
@@ -754,6 +702,89 @@ function OnlinePlayerBox({ gs, seat, mySeat }: { gs: GameStateView; seat: Seat; 
           Esperando reconexión...
         </div>
       )}
+    </div>
+  );
+}
+
+function bazaCardPts(c: Card): number {
+  const m: Record<number, number> = { 1: 11, 3: 10, 12: 4, 11: 3, 10: 2 };
+  return m[c.num] ?? 0;
+}
+
+function BazasModal({ gs, mySeat, onClose }: { gs: GameStateView; mySeat: Seat; onClose: () => void }) {
+  const myBazas = gs.bazasPorJugador[mySeat] || [];
+  const myTotal = myBazas.flat().reduce((s, c) => s + bazaCardPts(c), 0);
+
+  // Teammate bazas (when someone goes ir a dos)
+  let teammate: Seat | null = null;
+  let teamBazas: Card[][] = [];
+  if (gs.irADos !== null && gs.irADos !== mySeat && gs.activos.includes(mySeat)) {
+    const solo = gs.irADos as Seat;
+    teammate = gs.activos.find(s => s !== solo && s !== mySeat) ?? null;
+    if (teammate !== null) {
+      teamBazas = gs.bazasPorJugador[teammate] || [];
+    }
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+      display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 99997,
+    }} onClick={onClose}>
+      <div style={{
+        width: 'min(600px, 92vw)', maxHeight: '85vh', overflowY: 'auto',
+        background: '#13381f', padding: 16, borderRadius: 12, color: 'white',
+        border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 10px 60px rgba(0,0,0,0.65)',
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <h3 style={{ margin: 0 }}>Mis bazas ({myBazas.length}) — {myTotal} pts</h3>
+          <button onClick={onClose} style={{
+            background: 'none', border: 'none', color: '#fff', fontSize: '1.2rem', cursor: 'pointer', opacity: 0.7,
+          }}>✕</button>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {myBazas.length === 0 ? (
+            <span style={{ opacity: 0.7 }}>Sin bazas aún</span>
+          ) : myBazas.map((baza, idx) => {
+            const pts = baza.reduce((s, c) => s + bazaCardPts(c), 0);
+            return (
+              <div key={idx} title={`Baza ${idx + 1} — ${pts} pts`} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '4px 8px', borderRadius: 999,
+                background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.25)',
+              }}>
+                <span style={{ fontSize: 11, opacity: 0.8 }}>B{idx + 1}</span>
+                {baza.map((c, j) => <Carta key={j} carta={c} mini style={{ width: 28, margin: 1 }} />)}
+                <span style={{ fontSize: 11, opacity: 0.6 }}>{pts}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {teammate !== null && (
+          <>
+            <h3 style={{ margin: '16px 0 8px' }}>Bazas de {gs.playerNames[teammate]} ({teamBazas.length})</h3>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {teamBazas.length === 0 ? (
+                <span style={{ opacity: 0.7 }}>Sin bazas aún</span>
+              ) : teamBazas.map((baza, idx) => {
+                const pts = baza.reduce((s, c) => s + bazaCardPts(c), 0);
+                return (
+                  <div key={idx} title={`Baza ${idx + 1} — ${pts} pts`} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '4px 8px', borderRadius: 999,
+                    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.25)',
+                  }}>
+                    <span style={{ fontSize: 11, opacity: 0.8 }}>B{idx + 1}</span>
+                    {baza.map((c, j) => <Carta key={j} carta={c} mini style={{ width: 28, margin: 1 }} />)}
+                    <span style={{ fontSize: 11, opacity: 0.6 }}>{pts}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

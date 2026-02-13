@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
-import { Carta, MesaVisual, PanelTriunfo } from '../ui/Primitives';
+import { Carta, MesaVisual } from '../ui/Primitives';
 import { puedeJugar } from '../engine/tuteLogic';
 import type { Card, Palo, Seat } from '../engine/tuteTypes';
 import type { GameStateView } from '@shared/types';
@@ -58,7 +58,6 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
   const isHost = currentRoom?.hostUserId === user?.id;
   const [error, setError] = useState('');
   const [errorTimer, setErrorTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const handRef = useRef<HTMLDivElement>(null);
   const [handScale, setHandScale] = useState(1);
 
@@ -290,17 +289,17 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
           font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
         #root { max-width: none; padding: 0; width: 100%; }
         .og-page {
-          min-height: 100svh; display: grid; grid-template-columns: minmax(0, 1fr) 280px;
-          gap: 12px; padding: 12px; box-sizing: border-box; max-width: 1800px; margin: 0 auto; color: #fff;
+          min-height: 100svh; display: flex; flex-direction: column; gap: 8px;
+          padding: 8px; box-sizing: border-box; max-width: 1200px; margin: 0 auto; color: #fff;
         }
-        .og-board { display: flex; flex-direction: column; gap: 12px; }
+        .og-board { display: flex; flex-direction: column; gap: 8px; flex: 1; }
         .og-mesaBox { margin: 0 auto; width: calc(var(--card-w) * 5.2); height: calc(var(--card-h) * 3.2);
           border-radius: 12px; background: rgba(0,0,0,0.2); box-shadow: 0 10px 30px rgba(0,0,0,.25) inset; overflow: hidden; }
-        .og-sidebar { background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 12px; }
-        .og-pill { padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.12); margin-bottom: 8px; }
-        .og-pill.loser { border-color: #ff6b6b; background: rgba(255,60,60,0.18); }
-        .og-pill.eliminated { opacity: 0.45; border-color: #666; }
-        .og-pill.stoneOut { border-color: #ff4d4d; box-shadow: 0 0 0 3px rgba(255,77,77,0.55); }
+        .og-piedras-float {
+          position: fixed; bottom: 12px; right: 12px; z-index: 50;
+          background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.2);
+          border-radius: 10px; padding: 8px 12px; backdrop-filter: blur(8px);
+        }
         .playerHeaderLine { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 4px; }
         .badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.18); }
         .badge--dealer { background: linear-gradient(180deg, #ffd54f, #ffb300); color: #3b2b00; border-color: rgba(255,255,255,0.35); }
@@ -372,10 +371,7 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
         .og-bocadillo--below { left: 50%; transform: translateX(-50%); top: calc(100% + 6px); }
         .og-bocadillo--below::after { bottom: 100%; left: 50%; transform: translateX(-50%); border-bottom: 8px solid rgba(255,255,255,0.95); }
         @media (max-width: 900px) {
-          .og-page { grid-template-columns: 1fr; }
-          .og-sidebar-toggle { display: flex !important; }
-          .og-sidebar { display: none; }
-          .og-sidebar.og-sidebar--open { display: block; }
+          .og-piedras-float { bottom: 8px; right: 8px; padding: 6px 10px; }
         }
         @media (max-width: 600px) {
           :root {
@@ -388,7 +384,6 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
           }
           .og-bocadillo { font-size: 11px; padding: 6px 10px; white-space: normal; max-width: 200px; text-align: center; }
           .anuncio-overlay { font-size: 14px !important; padding: 8px 16px !important; white-space: normal !important; max-width: 80% !important; }
-          .og-pill { padding: 6px 8px; font-size: 0.8rem; }
           .badge { font-size: 10px; padding: 1px 6px; gap: 4px; }
           .playerHeaderLine { gap: 4px; flex-wrap: wrap; }
         }
@@ -397,7 +392,7 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
             --card-w: clamp(48px, 16vw, 64px);
             --npc-card-w: 32px;
           }
-          .og-page { padding: 6px; gap: 6px; }
+          .og-page { padding: 4px; gap: 4px; }
           .og-mesaBox {
             width: calc(var(--card-w) * 4) !important;
             height: calc(var(--card-h) * 2.5) !important;
@@ -405,27 +400,30 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
           .og-bocadillo { max-width: 160px; font-size: 10px; padding: 4px 8px; }
           .anuncio-overlay { font-size: 12px !important; padding: 6px 12px !important; }
           .badge { font-size: 9px; }
-        }
-        .og-sidebar-toggle {
-          display: none; align-items: center; justify-content: center;
-          gap: 6px; padding: 8px 16px; border-radius: 8px; cursor: pointer;
-          background: rgba(255,255,255,0.12); color: #fff; font-weight: 600;
-          border: 1px solid rgba(255,255,255,0.3); font-size: 0.85rem;
-          width: 100%;
+          .og-piedras-float { font-size: 0.65rem; padding: 5px 8px; bottom: 6px; right: 6px; }
         }
       `}</style>
 
       <div className="og-page">
         <div className="og-board">
-          {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <h2 style={{ margin: 0, fontSize: 'clamp(1rem, 3vw, 1.5rem)' }}>Tute Parrillano Online</h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: '0.85rem', opacity: 0.7 }}>
-                {gs.status === 'decidiendo_irados' ? '🗳 Decidiendo IR A LOS DOS...' :
-                  gs.status === 'jugando' ? `⏳ Turno de ${gs.playerNames[gs.turno]}` :
-                    gs.status === 'resumen' ? '🏁 Resumen del REO' : gs.status}
-              </span>
+          {/* Header compacto */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {gs.triunfo && (
+                <Carta carta={gs.triunfo} legal={false} style={{ width: 'clamp(28px, 6vw, 40px)', margin: 0, flexShrink: 0 }} />
+              )}
+              <div>
+                <div style={{ fontSize: 'clamp(0.7rem, 2.5vw, 0.85rem)', opacity: 0.7 }}>
+                  Triunfo: <b>{gs.triunfo ? gs.triunfo.palo : '—'}</b>
+                </div>
+                <div style={{ fontSize: 'clamp(0.65rem, 2vw, 0.8rem)', opacity: 0.6 }}>
+                  {gs.status === 'decidiendo_irados' ? 'Decidiendo IR A DOS...' :
+                    gs.status === 'jugando' ? `Turno: ${gs.playerNames[gs.turno]}` :
+                      gs.status === 'resumen' ? 'Resumen del REO' : gs.status}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <button
                 onClick={() => {
                   if (window.confirm('Si abandonas la partida, los demás jugadores te esperarán. ¿Seguro que quieres salir?')) {
@@ -433,12 +431,12 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
                   }
                 }}
                 style={{
-                  background: 'rgba(255,60,60,0.25)', color: '#fff', padding: '4px 12px',
-                  borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem',
+                  background: 'rgba(255,60,60,0.25)', color: '#fff', padding: '3px 10px',
+                  borderRadius: 6, cursor: 'pointer', fontSize: 'clamp(0.65rem, 2vw, 0.8rem)',
                   border: '1px solid rgba(255,60,60,0.5)',
                 }}
               >
-                Abandonar
+                Salir
               </button>
               {isHost && (
                 <button
@@ -448,18 +446,16 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
                     }
                   }}
                   style={{
-                    background: 'rgba(255,30,30,0.4)', color: '#ff6b6b', padding: '4px 12px',
-                    borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem',
+                    background: 'rgba(255,30,30,0.4)', color: '#ff6b6b', padding: '3px 10px',
+                    borderRadius: 6, cursor: 'pointer', fontSize: 'clamp(0.65rem, 2vw, 0.8rem)',
                     border: '1px solid rgba(255,60,60,0.7)', fontWeight: 700,
                   }}
                 >
-                  Terminar partida
+                  Terminar
                 </button>
               )}
             </div>
           </div>
-
-          <PanelTriunfo triunfo={gs.triunfo} />
 
           {/* Board: 4 corners */}
           <div style={{
@@ -649,35 +645,28 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
           })()}
         </div>
 
-        {/* SIDEBAR */}
-        <button className="og-sidebar-toggle" onClick={() => setSidebarOpen(v => !v)}>
-          Puntos {sidebarOpen ? '▲' : '▼'}
-        </button>
-        <aside className={`og-sidebar${sidebarOpen ? ' og-sidebar--open' : ''}`}>
-          <h3 style={{ marginTop: 0 }}>Puntos</h3>
-          {([0, 1, 2, 3] as Seat[]).map(s => (
-            <div key={s} className={`og-pill ${gs.perdedores.includes(s) ? 'loser' : ''} ${gs.eliminados.includes(s) ? 'eliminated' : ''}`}>
-              <strong>{gs.playerNames[s]}{s === mySeat ? ' (tú)' : ''}:</strong> {gs.puntos[s]}
-              {gs.dealer === s && <span style={{ marginLeft: 8, opacity: 0.8 }}>(dealer)</span>}
+        </div>
+
+      {/* Floating piedras panel — bottom right */}
+      <div className="og-piedras-float">
+        <div style={{ fontWeight: 700, fontSize: '0.75rem', opacity: 0.8, marginBottom: 4 }}>Piedras</div>
+        {([0, 1, 2, 3] as Seat[]).map(s => {
+          const val = gs.piedras[s];
+          const isElim = gs.eliminados.includes(s);
+          return (
+            <div key={s} style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              fontSize: 'clamp(0.65rem, 2vw, 0.8rem)',
+              opacity: isElim ? 0.4 : 1,
+              color: val <= 0 ? '#ff6b6b' : '#fff',
+            }}>
+              <span style={{ fontWeight: s === mySeat ? 700 : 400 }}>
+                {gs.playerNames[s]}{s === mySeat ? '*' : ''}:
+              </span>
+              <span>{val > 0 ? '●'.repeat(Math.min(val, 12)) : '—'}</span>
             </div>
-          ))}
-
-          <h4 style={{ marginTop: 16, marginBottom: 6 }}>Piedras</h4>
-          {([0, 1, 2, 3] as Seat[]).map(s => {
-            const val = gs.piedras[s];
-            const isElim = gs.eliminados.includes(s);
-            return (
-              <div key={s} className={`og-pill ${val <= 0 ? 'stoneOut' : ''} ${isElim ? 'eliminated' : ''}`}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>
-                  <strong>{gs.playerNames[s]}:</strong> {val} {val > 0 ? '●'.repeat(Math.min(val, 12)) : '—'}
-                  {isElim && <span style={{ marginLeft: 8, color: '#ff6b6b' }}>(Eliminado)</span>}
-                </span>
-              </div>
-            );
-          })}
-
-        </aside>
+          );
+        })}
       </div>
 
       {/* Error toast */}
@@ -716,6 +705,8 @@ function OnlinePlayerBox({ gs, seat, mySeat }: { gs: GameStateView; seat: Seat; 
   const isSolo = gs.irADos === seat;
   const isConnected = gs.playerConnected?.[seat] ?? true;
   const cardCount = isMe ? gs.myHand.length : (gs.otherPlayerCardCounts[seat] ?? 0);
+  const puntos = gs.puntos[seat];
+  const isLoser = gs.perdedores.includes(seat);
 
   return (
     <div style={{ textAlign: 'center', minWidth: 'clamp(80px, 22vw, 200px)', opacity: isConnected ? 1 : 0.5 }}>
@@ -723,15 +714,18 @@ function OnlinePlayerBox({ gs, seat, mySeat }: { gs: GameStateView; seat: Seat; 
         <span style={{ fontWeight: isMe ? 'bold' : 'normal' }}>
           {name} {isMe && '(tú)'}
         </span>
-        {isDealer && <span className="badge badge--dealer">🎴 Reparte</span>}
-        {isSolo && <span className="badge badge--solo">🥇 Va solo</span>}
+        <span className={`badge ${isLoser ? 'badge--loser' : ''}`} style={isLoser ? { background: 'rgba(255,60,60,0.3)', borderColor: 'rgba(255,60,60,0.6)', color: '#ff6b6b' } : {}}>
+          {puntos} pts
+        </span>
+        {isDealer && <span className="badge badge--dealer">🎴</span>}
+        {isSolo && <span className="badge badge--solo">Solo</span>}
         {isEliminated && <span className="badge badge--eliminated">Eliminado</span>}
         {!isConnected && !isMe && (
           <span className="badge" style={{ background: 'rgba(255,165,0,0.3)', borderColor: 'rgba(255,165,0,0.6)', color: '#ffaa33' }}>
-            Desconectado
+            Desc.
           </span>
         )}
-        {!isActive && !isDealer && !isEliminated && isConnected && <span style={{ opacity: 0.7 }}>(No juega)</span>}
+        {!isActive && !isDealer && !isEliminated && isConnected && <span style={{ opacity: 0.7, fontSize: '0.75em' }}>(No juega)</span>}
       </div>
 
       {!isMe && isActive && (

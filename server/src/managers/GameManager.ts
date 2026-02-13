@@ -126,11 +126,9 @@ export class GameManager {
     let newState = dispatch(state, event);
     session.state = newState;
 
-    // Auto-resolve trick when all active players have played
-    if (newState.status === 'jugando' && newState.mesa.length === newState.activos.length) {
-      newState = dispatch(newState, { type: 'resolverBaza' });
-      session.state = newState;
-    }
+    // NOTE: trick resolution (resolverBaza) is NOT auto-dispatched here.
+    // socketServer handles it with an intermediate broadcast + delay
+    // so clients can see the full mesa before it clears.
 
     // Save game result when series ends (detected after any action)
     if (newState.serieTerminada && newState.status === 'resumen' && !session.resultSaved) {
@@ -174,6 +172,28 @@ export class GameManager {
     }
 
     return newState;
+  }
+
+  needsTrickResolution(roomId: string): boolean {
+    const session = this.games.get(roomId);
+    if (!session) return false;
+    const { state } = session;
+    return state.status === 'jugando' && state.mesa.length === state.activos.length;
+  }
+
+  resolveTrick(roomId: string): void {
+    const session = this.games.get(roomId);
+    if (!session) return;
+    const newState = dispatch(session.state, { type: 'resolverBaza' });
+    session.state = newState;
+
+    // Save game result when series ends
+    if (newState.serieTerminada && newState.status === 'resumen' && !session.resultSaved) {
+      session.resultSaved = true;
+      this.saveGameResult(session, newState).catch(err =>
+        console.error('Error guardando resultado de partida:', err)
+      );
+    }
   }
 
   createPlayerView(roomId: string, userId: string, room?: Room): GameStateView {

@@ -21,6 +21,7 @@ export function setupSocketServer(httpServer: HttpServer) {
 
   const roomManager = new RoomManager();
   const gameManager = new GameManager();
+  const pendingTrickRooms = new Set<string>(); // rooms waiting for trick resolution delay
 
   // ── Auth middleware ──────────────────────────────────
   io.use(async (socket, next) => {
@@ -238,12 +239,27 @@ export function setupSocketServer(httpServer: HttpServer) {
         const roomId = roomManager.getUserRoomId(socket.userId);
         if (!roomId) throw new Error('No estás en ninguna partida');
 
+        if (pendingTrickRooms.has(roomId)) {
+          throw new Error('Esperando resolución de baza');
+        }
+
         gameManager.processAction(roomId, socket.userId, data.action);
 
-        // Broadcast updated views
-        broadcastGameViews(roomId);
+        // If trick is complete, broadcast the full mesa first, then resolve after delay
+        if (gameManager.needsTrickResolution(roomId)) {
+          pendingTrickRooms.add(roomId);
+          broadcastGameViews(roomId); // Show all cards on mesa
+          cb({ success: true });
 
-        cb({ success: true });
+          setTimeout(() => {
+            pendingTrickRooms.delete(roomId);
+            gameManager.resolveTrick(roomId);
+            broadcastGameViews(roomId); // Show resolved state
+          }, 1500);
+        } else {
+          broadcastGameViews(roomId);
+          cb({ success: true });
+        }
       } catch (err: any) {
         cb({ success: false, error: err.message });
       }

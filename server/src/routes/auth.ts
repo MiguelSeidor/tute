@@ -31,8 +31,13 @@ router.post('/register', async (req: Request, res: Response) => {
       return;
     }
 
-    if (username.length < 3) {
-      res.status(400).json({ error: 'El nombre de usuario debe tener al menos 3 caracteres' });
+    if (username.length < 3 || username.length > 30) {
+      res.status(400).json({ error: 'El nombre de usuario debe tener entre 3 y 30 caracteres' });
+      return;
+    }
+
+    if (email.length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      res.status(400).json({ error: 'Email inválido' });
       return;
     }
 
@@ -41,8 +46,7 @@ router.post('/register', async (req: Request, res: Response) => {
     });
 
     if (existing) {
-      const field = existing.email === email ? 'email' : 'nombre de usuario';
-      res.status(400).json({ error: `Ese ${field} ya está registrado` });
+      res.status(400).json({ error: 'Ese email o nombre de usuario ya está registrado' });
       return;
     }
 
@@ -189,6 +193,11 @@ router.post('/reset-password', async (req: Request, res: Response) => {
 
     if (!token || !password) {
       res.status(400).json({ error: 'Token y contraseña son obligatorios' });
+      return;
+    }
+
+    if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) {
+      res.status(400).json({ error: 'Token inválido' });
       return;
     }
 

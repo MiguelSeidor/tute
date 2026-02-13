@@ -412,14 +412,25 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
             width: calc(var(--card-w) * 4.5) !important;
             height: calc(var(--card-h) * 2.8) !important;
           }
-          .og-bocadillo { font-size: 11px; padding: 6px 10px; }
-          .anuncio-overlay { font-size: 14px !important; padding: 8px 16px !important; }
+          .og-bocadillo { font-size: 11px; padding: 6px 10px; white-space: normal; max-width: 200px; text-align: center; }
+          .anuncio-overlay { font-size: 14px !important; padding: 8px 16px !important; white-space: normal !important; max-width: 80% !important; }
+          .og-pill { padding: 6px 8px; font-size: 0.8rem; }
+          .badge { font-size: 10px; padding: 1px 6px; gap: 4px; }
+          .playerHeaderLine { gap: 4px; flex-wrap: wrap; }
         }
         @media (max-width: 400px) {
           :root {
             --card-w: clamp(48px, 16vw, 64px);
             --npc-card-w: 32px;
           }
+          .og-page { padding: 6px; gap: 6px; }
+          .og-mesaBox {
+            width: calc(var(--card-w) * 4) !important;
+            height: calc(var(--card-h) * 2.5) !important;
+          }
+          .og-bocadillo { max-width: 160px; font-size: 10px; padding: 4px 8px; }
+          .anuncio-overlay { font-size: 12px !important; padding: 6px 12px !important; }
+          .badge { font-size: 9px; }
         }
         .og-sidebar-toggle {
           display: none; align-items: center; justify-content: center;
@@ -733,7 +744,7 @@ function OnlinePlayerBox({ gs, seat, mySeat }: { gs: GameStateView; seat: Seat; 
   const cardCount = isMe ? gs.myHand.length : (gs.otherPlayerCardCounts[seat] ?? 0);
 
   return (
-    <div style={{ textAlign: 'center', minWidth: 'clamp(120px, 30vw, 200px)', opacity: isConnected ? 1 : 0.5 }}>
+    <div style={{ textAlign: 'center', minWidth: 'clamp(80px, 22vw, 200px)', opacity: isConnected ? 1 : 0.5 }}>
       <div className="playerHeaderLine">
         <span style={{ fontWeight: isMe ? 'bold' : 'normal' }}>
           {name} {isMe && '(tú)'}
@@ -750,7 +761,7 @@ function OnlinePlayerBox({ gs, seat, mySeat }: { gs: GameStateView; seat: Seat; 
       </div>
 
       {!isMe && isActive && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center', minHeight: 'var(--card-h)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'clamp(2px, 1vw, 6px)', justifyContent: 'center', minHeight: 'var(--card-h)' }}>
           {Array.from({ length: cardCount }).map((_, i) => (
             <Carta key={i} tapada style={{ width: 'var(--npc-card-w)' }} />
           ))}

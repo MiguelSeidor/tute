@@ -123,6 +123,10 @@ router.get('/me', authMiddleware, async (req: Request, res: Response) => {
 
 // POST /api/stats/dev/simulate — Inserta una partida ficticia para testing (solo desarrollo)
 router.post('/dev/simulate', authMiddleware, async (req: Request, res: Response) => {
+  if (process.env.NODE_ENV === 'production') {
+    res.status(403).json({ error: 'No disponible en producción' });
+    return;
+  }
   try {
     const userId = req.userId!;
 

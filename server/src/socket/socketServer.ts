@@ -90,7 +90,11 @@ export function setupSocketServer(httpServer: HttpServer) {
     // ── Room: Create ──
     socket.on('room:create', (data: CreateRoomRequest, cb: Function) => {
       try {
-        const room = roomManager.createRoom(socket.userId, socket.username, data.name, data.piedras);
+        if (!data.name || typeof data.name !== 'string' || data.name.trim().length < 1 || data.name.length > 50) {
+          cb({ success: false, error: 'Nombre de sala inválido (1-50 caracteres)' });
+          return;
+        }
+        const room = roomManager.createRoom(socket.userId, socket.username, data.name.trim(), data.piedras);
         socket.join(room.id);
         cb({ success: true, roomId: room.id });
         io.to(room.id).emit('room:updated', room);
@@ -247,13 +251,15 @@ export function setupSocketServer(httpServer: HttpServer) {
 
     // ── Game: Phrase (broadcast bocadillo to all players) ──
     socket.on('game:phrase', (data: { texto: string }) => {
+      if (!data.texto || typeof data.texto !== 'string' || data.texto.length > 200) return;
+      const texto = data.texto.replace(/[<>&"']/g, '');
       const roomId = roomManager.getUserRoomId(socket.userId);
       if (!roomId) return;
       const room = roomManager.getRoom(roomId);
       if (!room) return;
       const player = room.players.find(p => p.userId === socket.userId);
       if (!player || player.seat === null) return;
-      io.to(roomId).emit('game:phrase', { seat: player.seat, texto: data.texto });
+      io.to(roomId).emit('game:phrase', { seat: player.seat, texto });
     });
 
     // ── Disconnect ──

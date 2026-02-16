@@ -53,7 +53,7 @@ function rotateMesa(mesa: { seat: Seat; card: Card }[], mySeat: Seat) {
 }
 
 export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
-  const { gameState, sendAction, sendPhrase, phraseEvent, leaveRoom, deleteRoom, currentRoom } = useSocket();
+  const { gameState, sendAction, sendPhrase, setResumenReady, phraseEvent, leaveRoom, deleteRoom, currentRoom } = useSocket();
   const { user } = useAuth();
   const isHost = currentRoom?.hostUserId === user?.id;
   const [error, setError] = useState('');
@@ -645,7 +645,7 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
         </div>
       )}
 
-      {gs.status === 'resumen' && <ResumenModal gs={gs} onAction={handleAction} />}
+      {gs.status === 'resumen' && <ResumenModal gs={gs} onReady={setResumenReady} />}
     </>
   );
 }
@@ -813,10 +813,16 @@ function BazasModal({ gs, mySeat, onClose }: { gs: GameStateView; mySeat: Seat; 
   );
 }
 
-function ResumenModal({ gs, onAction }: { gs: GameStateView; onAction: (a: any) => void }) {
+function ResumenModal({ gs, onReady }: { gs: GameStateView; onReady: () => void }) {
   const activeSeats = new Set<number>(gs.activos);
-  const turnos: Record<number, any[]> = {};
+  const eliminados = gs.eliminados ?? [];
+  const relevantSeats = ([0, 1, 2, 3] as Seat[]).filter(s => !eliminados.includes(s));
+  const readySet = new Set(gs.resumenReady);
+  const iAmReady = readySet.has(gs.mySeat);
+  const readyCount = relevantSeats.filter(s => readySet.has(s)).length;
+  const totalCount = relevantSeats.length;
 
+  const turnos: Record<number, any[]> = {};
   for (const e of gs.reoLog as any[]) {
     let key: number;
     if (e?.turno === undefined || e?.turno === null) {
@@ -895,19 +901,40 @@ function ResumenModal({ gs, onAction }: { gs: GameStateView; onAction: (a: any) 
               <div style={{ color: '#ffcc00', fontWeight: 'bold', marginTop: 4 }}>Serie terminada</div>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            {!gs.serieTerminada && (
-              <button onClick={() => onAction({ type: 'finalizarReo' })}
-                style={{ padding: '8px 16px', borderRadius: 6, fontWeight: 600, cursor: 'pointer' }}>
-                Siguiente ronda
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+            {/* Ready status per player */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {relevantSeats.map(s => (
+                <span key={s} style={{
+                  fontSize: 12, padding: '2px 8px', borderRadius: 999,
+                  background: readySet.has(s) ? 'rgba(0,200,120,0.3)' : 'rgba(255,255,255,0.1)',
+                  border: `1px solid ${readySet.has(s) ? 'rgba(0,255,120,0.5)' : 'rgba(255,255,255,0.2)'}`,
+                  color: readySet.has(s) ? '#aaffaa' : 'rgba(255,255,255,0.6)',
+                }}>
+                  {readySet.has(s) ? '\u2713' : '\u00B7'} {gs.playerNames[s]}
+                </span>
+              ))}
+            </div>
+            {/* Ready button */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {iAmReady && (
+                <span style={{ fontSize: 13, opacity: 0.7 }}>
+                  Esperando ({readyCount}/{totalCount})...
+                </span>
+              )}
+              <button
+                onClick={onReady}
+                disabled={iAmReady}
+                style={{
+                  padding: '8px 20px', borderRadius: 6, fontWeight: 600, cursor: iAmReady ? 'default' : 'pointer',
+                  background: iAmReady ? 'rgba(0,200,120,0.3)' : undefined,
+                  opacity: iAmReady ? 0.7 : 1,
+                  border: iAmReady ? '1px solid rgba(0,255,120,0.4)' : undefined,
+                  color: iAmReady ? '#aaffaa' : undefined,
+                }}>
+                {iAmReady ? 'Listo \u2713' : (gs.serieTerminada ? 'Listo (Nueva serie)' : 'Listo (Siguiente ronda)')}
               </button>
-            )}
-            {gs.serieTerminada && (
-              <button onClick={() => onAction({ type: 'resetSerie' })}
-                style={{ padding: '8px 16px', borderRadius: 6, fontWeight: 600, cursor: 'pointer' }}>
-                Nueva serie
-              </button>
-            )}
+            </div>
           </div>
         </div>
       </div>

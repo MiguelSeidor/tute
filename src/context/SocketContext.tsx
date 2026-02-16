@@ -24,6 +24,7 @@ interface SocketContextType {
   startGame: () => Promise<void>;
   sendAction: (action: GameEvent) => Promise<void>;
   sendPhrase: (texto: string) => void;
+  setResumenReady: () => Promise<void>;
   rejoinRoom: () => Promise<boolean>;
   deleteRoom: () => Promise<void>;
   refreshRoomList: () => void;
@@ -157,6 +158,18 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socketRef.current?.emit('game:phrase', { texto });
   }, []);
 
+  const setResumenReady = useCallback(async () => {
+    const socket = socketRef.current;
+    if (!socket) throw new Error('Socket no conectado');
+
+    return new Promise<void>((resolve, reject) => {
+      socket.emit('resumen:ready', (res: any) => {
+        if (res.success) resolve();
+        else reject(new Error(res.error));
+      });
+    });
+  }, []);
+
   const rejoinRoom = useCallback(async (): Promise<boolean> => {
     const socket = socketRef.current;
     if (!socket) return false;
@@ -199,7 +212,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   return (
     <SocketContext.Provider value={{
       connected, currentRoom, roomList, gameState, gameStarted, phraseEvent,
-      createRoom, joinRoom, leaveRoom, setReady, startGame, sendAction, sendPhrase, rejoinRoom, deleteRoom, refreshRoomList,
+      createRoom, joinRoom, leaveRoom, setReady, startGame, sendAction, sendPhrase, setResumenReady, rejoinRoom, deleteRoom, refreshRoomList,
     }}>
       {children}
     </SocketContext.Provider>

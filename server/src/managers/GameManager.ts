@@ -17,6 +17,9 @@ interface GameSession {
   // Ir-a-dos phase tracking (server manages per-player turns)
   irADosPending: Seat[];    // active players who haven't decided yet
   irADosCurrent: number;    // index into irADosPending for who decides next
+
+  // Resumen ready tracking — seats that clicked "Listo"
+  resumenReady: Set<Seat>;
 }
 
 export class GameManager {
@@ -49,6 +52,7 @@ export class GameManager {
       resultSaved: false,
       irADosPending: [...state.activos],
       irADosCurrent: 0,
+      resumenReady: new Set(),
     };
 
     this.games.set(room.id, session);
@@ -130,6 +134,11 @@ export class GameManager {
     // socketServer handles it with an intermediate broadcast + delay
     // so clients can see the full mesa before it clears.
 
+    // Reset resumen ready tracking when entering resumen
+    if (newState.status === 'resumen') {
+      session.resumenReady = new Set();
+    }
+
     // Save game result when series ends (detected after any action)
     if (newState.serieTerminada && newState.status === 'resumen' && !session.resultSaved) {
       session.resultSaved = true;
@@ -172,6 +181,29 @@ export class GameManager {
     }
 
     return newState;
+  }
+
+  /** Mark a seat as ready to close the resumen modal. Returns whether all are ready. */
+  setResumenReady(roomId: string, seat: Seat): { allReady: boolean; state: GameState } {
+    const session = this.games.get(roomId);
+    if (!session) throw new Error('Partida no encontrada');
+    if (session.state.status !== 'resumen') throw new Error('No estás en fase de resumen');
+
+    session.resumenReady.add(seat);
+
+    // Check if all non-eliminated active seats are ready
+    const eliminados = session.state.eliminados ?? [];
+    const relevantSeats = ([0, 1, 2, 3] as Seat[]).filter(s => !eliminados.includes(s));
+    const allReady = relevantSeats.every(s => session.resumenReady.has(s));
+
+    if (allReady) {
+      // Auto-advance: finalizarReo or resetSerie
+      const actionType = session.state.serieTerminada ? 'resetSerie' : 'finalizarReo';
+      const newState = this.processAction(roomId, session.seatToUserId[session.state.dealer], { type: actionType });
+      return { allReady: true, state: newState };
+    }
+
+    return { allReady: false, state: session.state };
   }
 
   needsTrickResolution(roomId: string): boolean {
@@ -256,6 +288,7 @@ export class GameManager {
       cantesTuteCantado: state.cantesTuteCantado,
       playerNames,
       playerConnected,
+      resumenReady: [...session.resumenReady],
     };
   }
 

@@ -134,6 +134,9 @@ export interface GameStateView {
 
   // Connection status per seat (for disconnect indicators)
   playerConnected: Record<Seat, boolean>;
+
+  // Seats that have marked "ready" to close the resumen modal
+  resumenReady: Seat[];
 }
 
 export interface CreateRoomRequest {

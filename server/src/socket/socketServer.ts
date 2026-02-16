@@ -265,6 +265,26 @@ export function setupSocketServer(httpServer: HttpServer) {
       }
     });
 
+    // ── Game: Resumen Ready ──
+    socket.on('resumen:ready', (cb: Function) => {
+      try {
+        const roomId = roomManager.getUserRoomId(socket.userId);
+        if (!roomId) throw new Error('No estás en ninguna partida');
+
+        const session = gameManager.getSession(roomId);
+        if (!session) throw new Error('Partida no encontrada');
+
+        const seat = session.userIdToSeat.get(socket.userId);
+        if (seat === undefined) throw new Error('No estás en esta partida');
+
+        const { allReady } = gameManager.setResumenReady(roomId, seat);
+        broadcastGameViews(roomId);
+        cb({ success: true });
+      } catch (err: any) {
+        cb({ success: false, error: err.message });
+      }
+    });
+
     // ── Game: Phrase (broadcast bocadillo to all players) ──
     socket.on('game:phrase', (data: { texto: string }) => {
       if (!data.texto || typeof data.texto !== 'string' || data.texto.length > 200) return;

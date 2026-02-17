@@ -73,6 +73,8 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
       }
     const dorso = new Image();
     dorso.src = '/cartas/dorso.png';
+    const piedra = new Image();
+    piedra.src = '/cartas/piedra.png';
   }, []);
 
   // ── Trick winner overlay: detect when mesa is full (all active played) ──
@@ -705,10 +707,14 @@ function OnlinePlayerBox({ gs, seat, mySeat }: { gs: GameStateView; seat: Seat; 
         {!isActive && !isDealer && !isEliminated && isConnected && <span style={{ opacity: 0.7, fontSize: '0.75em' }}>(No juega)</span>}
       </div>
       <div className="piedras-dots" style={{
-        fontSize: 'clamp(8px, 2vw, 11px)', opacity: isEliminated ? 0.4 : 0.8, lineHeight: 1,
-        color: gs.piedras[seat] <= 0 ? '#ff6b6b' : '#aaffaa',
+        opacity: isEliminated ? 0.4 : 1, lineHeight: 1,
+        display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap',
       }}>
-        {gs.piedras[seat] > 0 ? '●'.repeat(Math.min(gs.piedras[seat], 12)) : '✕'}
+        {gs.piedras[seat] > 0
+          ? Array.from({ length: Math.min(gs.piedras[seat], 12) }).map((_, i) => (
+              <img key={i} src="/cartas/piedra.png" alt="piedra" style={{ width: 'clamp(10px, 2.5vw, 16px)', height: 'auto' }} />
+            ))
+          : <span style={{ color: '#ff6b6b', fontSize: 'clamp(8px, 2vw, 11px)' }}>✕</span>}
       </div>
 
       {!isMe && isActive && (

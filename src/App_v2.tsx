@@ -113,6 +113,8 @@ export default function App_v2() {
       }
     const dorso = new Image();
     dorso.src = '/cartas/dorso.png';
+    const piedra = new Image();
+    piedra.src = '/cartas/piedra.png';
   }, []);
 
   // === Anuncio visual (cantes, tute, ir a los dos) ===
@@ -798,10 +800,14 @@ export default function App_v2() {
           )}
         </div>
         <div className="piedras-dots" style={{
-          fontSize: 'clamp(8px, 2vw, 11px)', opacity: isEliminated ? 0.4 : 0.8, lineHeight: 1,
-          color: game.piedras[seat] <= 0 ? '#ff6b6b' : '#aaffaa',
+          opacity: isEliminated ? 0.4 : 1, lineHeight: 1,
+          display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap',
         }}>
-          {game.piedras[seat] > 0 ? '●'.repeat(Math.min(game.piedras[seat], 12)) : '✕'}
+          {game.piedras[seat] > 0
+            ? Array.from({ length: Math.min(game.piedras[seat], 12) }).map((_, i) => (
+                <img key={i} src="/cartas/piedra.png" alt="piedra" style={{ width: 'clamp(10px, 2.5vw, 16px)', height: 'auto' }} />
+              ))
+            : <span style={{ color: '#ff6b6b', fontSize: 'clamp(8px, 2vw, 11px)' }}>✕</span>}
         </div>
 
         <div className="playerActionLine">

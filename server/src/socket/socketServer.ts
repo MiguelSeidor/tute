@@ -22,6 +22,7 @@ export function setupSocketServer(httpServer: HttpServer) {
   const roomManager = new RoomManager();
   const gameManager = new GameManager();
   const pendingTrickRooms = new Set<string>(); // rooms waiting for trick resolution delay
+  const userSockets = new Map<string, Set<string>>(); // userId → set of socketIds
 
   // ── Auth middleware ──────────────────────────────────
   io.use(async (socket, next) => {
@@ -55,11 +56,12 @@ export function setupSocketServer(httpServer: HttpServer) {
     for (const player of room.players) {
       try {
         const view = gameManager.createPlayerView(roomId, player.userId, room);
-        // Find socket for this user
-        for (const [, s] of io.sockets.sockets) {
-          if ((s as AuthSocket).userId === player.userId) {
-            s.emit('game:state', view);
-            break;
+        // Emit to ALL sockets for this user (supports multiple sessions)
+        const socketIds = userSockets.get(player.userId);
+        if (socketIds) {
+          for (const sid of socketIds) {
+            const s = io.sockets.sockets.get(sid);
+            if (s) s.emit('game:state', view);
           }
         }
       } catch {
@@ -71,7 +73,13 @@ export function setupSocketServer(httpServer: HttpServer) {
   // ── Connection handler ─────────────────────────────
   io.on('connection', (rawSocket: Socket) => {
     const socket = rawSocket as AuthSocket;
-    console.log(`[socket] Conectado: ${socket.username}`);
+    console.log(`[socket] Conectado: ${socket.username} (${socket.id})`);
+
+    // Track this socket for the user
+    if (!userSockets.has(socket.userId)) {
+      userSockets.set(socket.userId, new Set());
+    }
+    userSockets.get(socket.userId)!.add(socket.id);
 
     // Reconnect: if user is in a room, rejoin
     const existingRoom = roomManager.getRoomByUser(socket.userId);
@@ -300,13 +308,24 @@ export function setupSocketServer(httpServer: HttpServer) {
 
     // ── Disconnect ──
     socket.on('disconnect', () => {
-      console.log(`[socket] Desconectado: ${socket.username}`);
-      const room = roomManager.setPlayerConnected(socket.userId, false);
-      if (room) {
-        io.to(room.id).emit('room:updated', room);
-        // If game is active, broadcast updated views so others see disconnection
-        if (room.status === 'playing') {
-          broadcastGameViews(room.id);
+      console.log(`[socket] Desconectado: ${socket.username} (${socket.id})`);
+
+      // Remove this socket from user's set
+      const sockets = userSockets.get(socket.userId);
+      if (sockets) {
+        sockets.delete(socket.id);
+        if (sockets.size === 0) userSockets.delete(socket.userId);
+      }
+
+      // Only mark as disconnected if user has NO remaining sockets
+      const hasOtherSockets = userSockets.has(socket.userId);
+      if (!hasOtherSockets) {
+        const room = roomManager.setPlayerConnected(socket.userId, false);
+        if (room) {
+          io.to(room.id).emit('room:updated', room);
+          if (room.status === 'playing') {
+            broadcastGameViews(room.id);
+          }
         }
       }
     });

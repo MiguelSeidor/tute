@@ -62,6 +62,19 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
   const [handScale, setHandScale] = useState(1);
   const [showBazas, setShowBazas] = useState(false);
 
+  // ── Preload all card images on mount ──
+  useEffect(() => {
+    const palos = ['espadas', 'oros', 'bastos', 'copas'];
+    const nums = [1, 3, 6, 7, 10, 11, 12];
+    for (const p of palos)
+      for (const n of nums) {
+        const img = new Image();
+        img.src = `/cartas/${p}_${n}.png`;
+      }
+    const dorso = new Image();
+    dorso.src = '/cartas/dorso.png';
+  }, []);
+
   // ── Trick winner overlay: detect when mesa is full (all active played) ──
   const [trickWinner, setTrickWinner] = useState<Seat | null>(null);
 
@@ -503,7 +516,7 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
             <div style={{ gridColumn: '2', gridRow: '1', position: 'relative' }}>
               <OnlinePlayerBox gs={gs} seat={visual.top} mySeat={mySeat} />
               {bocadillos[visual.top] && (
-                <div className="og-bocadillo og-bocadillo--below" key={bocadillos[visual.top]!.key}>{bocadillos[visual.top]!.texto}</div>
+                <div className="og-bocadillo og-bocadillo--above" key={bocadillos[visual.top]!.key}>{bocadillos[visual.top]!.texto}</div>
               )}
             </div>
             {/* Left player */}
@@ -540,7 +553,7 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
             <div style={{ gridColumn: '2', gridRow: '3', position: 'relative' }}>
               <OnlinePlayerBox gs={gs} seat={visual.bottom} mySeat={mySeat} />
               {bocadillos[visual.bottom] && (
-                <div className="og-bocadillo og-bocadillo--above" key={bocadillos[visual.bottom]!.key}>{bocadillos[visual.bottom]!.texto}</div>
+                <div className="og-bocadillo og-bocadillo--below" key={bocadillos[visual.bottom]!.key}>{bocadillos[visual.bottom]!.texto}</div>
               )}
             </div>
           </div>

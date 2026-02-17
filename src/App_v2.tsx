@@ -102,6 +102,19 @@ export default function App_v2() {
   const aiBusyRef = React.useRef(false);
   const aiTimerRef = React.useRef<number | null>(null);
 
+  // ── Preload all card images on mount ──
+  React.useEffect(() => {
+    const palos = ['espadas', 'oros', 'bastos', 'copas'];
+    const nums = [1, 3, 6, 7, 10, 11, 12];
+    for (const p of palos)
+      for (const n of nums) {
+        const img = new Image();
+        img.src = `/cartas/${p}_${n}.png`;
+      }
+    const dorso = new Image();
+    dorso.src = '/cartas/dorso.png';
+  }, []);
+
   // === Anuncio visual (cantes, tute, ir a los dos) ===
   const [anuncio, setAnuncio] = useState<{ texto: string; tipo: "cante" | "tute" | "irados" | "tirarselas" } | null>(null);
   const anuncioLogLen = React.useRef(0);
@@ -1381,6 +1394,7 @@ export default function App_v2() {
   // Render (Offline mode)
   return (
     <>
+      <style>{bodyStyle}</style>
       {/* Reutilizamos tu CSS (puedes moverlo a .css cuando quieras) */}
       <style>{`
         :root {
@@ -1717,7 +1731,7 @@ export default function App_v2() {
             <div style={{ gridColumn: "2", gridRow: "1", position: "relative" }}>
               <PlayerBox seat={2} game={game} send={send} revealAll={modoDestapado}/>
               {bocadillos[2] && (
-                <div className="bocadillo bocadillo--below" key={bocadillos[2].key}>{bocadillos[2].texto}</div>
+                <div className="bocadillo bocadillo--above" key={bocadillos[2].key}>{bocadillos[2].texto}</div>
               )}
             </div>
 
@@ -1757,7 +1771,7 @@ export default function App_v2() {
             <div style={{ gridColumn: "2", gridRow: "3", position: "relative" }}>
               <PlayerBox seat={0} game={game} send={send} revealAll={modoDestapado} hideHand/>
               {bocadillos[0] && (
-                <div className="bocadillo bocadillo--above" key={bocadillos[0].key}>{bocadillos[0].texto}</div>
+                <div className="bocadillo bocadillo--below" key={bocadillos[0].key}>{bocadillos[0].texto}</div>
               )}
             </div>
           </div>

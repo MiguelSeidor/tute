@@ -5,6 +5,8 @@ import { Carta, MesaVisual } from '../ui/Primitives';
 import { puedeJugar } from '../engine/tuteLogic';
 import type { Card, Palo, Seat } from '../engine/tuteTypes';
 import type { GameStateView } from '@shared/types';
+import { useCeremonyPhase, PALO_ICONS, PALO_LABELS, DEAL_DIRECTION, getVisualSlot } from '../ui/DealerCeremony';
+import type { DealCardAnim } from '../ui/DealerCeremony';
 
 const CLOCKWISE: Seat[] = [0, 3, 2, 1];
 
@@ -53,7 +55,7 @@ function rotateMesa(mesa: { seat: Seat; card: Card }[], mySeat: Seat) {
 }
 
 export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
-  const { gameState, sendAction, sendPhrase, setResumenReady, phraseEvent, leaveRoom, deleteRoom, currentRoom } = useSocket();
+  const { gameState, sendAction, sendPhrase, setResumenReady, phraseEvent, leaveRoom, deleteRoom, currentRoom, ceremonyData, clearCeremony, dealingDealer, clearDealing } = useSocket();
   const { user } = useAuth();
   const isHost = currentRoom?.hostUserId === user?.id;
   const [error, setError] = useState('');
@@ -61,6 +63,12 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
   const handRef = useRef<HTMLDivElement>(null);
   const [handScale, setHandScale] = useState(1);
   const [showBazas, setShowBazas] = useState(false);
+
+  // ── Inline REO dealing (replaces DealingOverlay) ──
+  const [reoDealCards, setReoDealCards] = React.useState<DealCardAnim[]>([]);
+  const reoDealCardId = useRef(0);
+  const clearDealingRef = useRef(clearDealing);
+  clearDealingRef.current = clearDealing;
 
   // ── Preload all card images on mount ──
   useEffect(() => {
@@ -120,6 +128,13 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
   const mySeat = gs.mySeat;
   const isMyTurn = gs.turno === mySeat;
   const visual = getVisualSeats(mySeat);
+
+  const cerPhase = useCeremonyPhase({
+    active: !!ceremonyData,
+    dealer: ceremonyData?.dealer ?? (0 as Seat),
+    mySeat,
+    onComplete: clearCeremony,
+  });
 
   // === Anuncio visual (cantes, tute, ir a los dos, tirárselas) ===
   const [anuncio, setAnuncio] = useState<{ texto: string; tipo: 'cante' | 'tute' | 'irados' | 'tirarselas' } | null>(null);
@@ -226,6 +241,32 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
     window.addEventListener('resize', recalcHandScale);
     return () => window.removeEventListener('resize', recalcHandScale);
   }, [recalcHandScale, gs.myHand.length]);
+
+  // ── REO dealing animation (inline, from dealer position) ──
+  useEffect(() => {
+    if (dealingDealer === null) { setReoDealCards([]); return; }
+    const dealer = dealingDealer;
+    const activos = CLOCKWISE.filter(s => s !== dealer);
+    const dealOrder: Seat[] = [];
+    for (let round = 0; round < 3; round++) {
+      for (const s of activos) dealOrder.push(s);
+    }
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const interval = 200;
+    dealOrder.forEach((seat, i) => {
+      timers.push(setTimeout(() => {
+        const id = reoDealCardId.current++;
+        const targetSlot = getVisualSlot(seat, mySeat);
+        setReoDealCards(prev => [...prev, { id, targetSlot }]);
+        timers.push(setTimeout(() => {
+          setReoDealCards(prev => prev.filter(c => c.id !== id));
+        }, 500));
+      }, i * interval));
+    });
+    const totalTime = dealOrder.length * interval + 600;
+    timers.push(setTimeout(() => { clearDealingRef.current(); }, totalTime));
+    return () => timers.forEach(t => clearTimeout(t));
+  }, [dealingDealer, mySeat]);
 
   function showError(msg: string) {
     setError(msg);
@@ -454,6 +495,91 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
           .resumen-table th, .resumen-table td { padding: 3px 2px; }
           .resumen-footer { gap: 8px; font-size: 11px; }
         }
+
+        /* ── Ceremony ── */
+        @keyframes cer-pop-in {
+          from { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+          to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+        @keyframes cer-fade-in {
+          from { opacity: 0; transform: translateX(-50%) scale(0.7); }
+          to   { opacity: 1; transform: translateX(-50%) scale(1); }
+        }
+        @keyframes cer-card-flip {
+          0%   { opacity: 0; transform: translate(-50%, -50%) rotateY(90deg) scale(0.8); }
+          50%  { opacity: 1; transform: translate(-50%, -50%) rotateY(0deg) scale(1.1); }
+          100% { opacity: 1; transform: translate(-50%, -50%) rotateY(0deg) scale(1); }
+        }
+        @keyframes cer-deal-fly {
+          from { opacity: 1; transform: translate(var(--deal-ox, 0px), var(--deal-oy, 0px)) scale(0.8); }
+          to   { opacity: 0; transform: translate(var(--deal-tx), var(--deal-ty)) scale(0.4); }
+        }
+        .cer-backdrop {
+          position: fixed; inset: 0; z-index: 99998;
+          background: rgba(0, 0, 0, 0.75);
+          pointer-events: auto;
+        }
+        .cer-badge {
+          position: absolute;
+          bottom: calc(100% + 4px);
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 99999;
+          padding: clamp(4px, 1vw, 8px) clamp(8px, 2vw, 14px);
+          border-radius: 8px;
+          background: rgba(0, 0, 0, 0.9);
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          color: white;
+          font-weight: 700;
+          animation: cer-fade-in 400ms ease-out both;
+          text-align: center;
+          white-space: nowrap;
+        }
+        .cer-badge.is-dealer {
+          border-color: #ffd700;
+          box-shadow: 0 0 16px rgba(255, 215, 0, 0.6);
+          background: rgba(80, 60, 0, 0.95);
+        }
+        .cer-badge-name { font-size: clamp(9px, 2vw, 13px); opacity: 0.8; }
+        .cer-badge-palo { font-size: clamp(12px, 3vw, 22px); }
+        .cer-title {
+          position: absolute; top: 50%; left: 50%;
+          transform: translate(-50%, -50%); z-index: 99999;
+          font-size: clamp(20px, 5vw, 36px); font-weight: 900;
+          color: #ffd700;
+          text-shadow: 0 0 20px rgba(255, 215, 0, 0.6), 0 2px 8px rgba(0,0,0,0.5);
+          white-space: nowrap;
+          animation: cer-pop-in 500ms ease-out both;
+          pointer-events: none;
+        }
+        .cer-card-center {
+          position: absolute; top: 50%; left: 50%;
+          transform: translate(-50%, -50%); z-index: 99999;
+          pointer-events: none;
+          display: flex; flex-direction: column; align-items: center;
+        }
+        .cer-card-img {
+          width: clamp(50px, 12vw, 100px); border-radius: 6px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        .cer-card-img.cer-card-reveal { animation: cer-card-flip 600ms ease-out both; }
+        .cer-dealer-label {
+          margin-top: clamp(6px, 1.5vw, 12px);
+          font-size: clamp(13px, 3vw, 20px); font-weight: 800;
+          color: #ffd700; text-shadow: 0 0 12px rgba(255, 215, 0, 0.5);
+          animation: cer-fade-in 400ms ease-out 600ms both;
+          white-space: nowrap; text-align: center;
+        }
+        .cer-deal-card {
+          position: absolute;
+          width: clamp(24px, 6vw, 44px); border-radius: 4px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+          top: 50%; left: 50%;
+          margin-top: clamp(-20px, -4vw, -30px);
+          margin-left: clamp(-16px, -3vw, -22px);
+          pointer-events: none;
+          animation: cer-deal-fly 500ms ease-in both;
+        }
       `}</style>
 
       <div className="og-page">
@@ -514,8 +640,25 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
             display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr)', gridTemplateRows: 'auto auto auto',
             gap: 'clamp(2px, 1vw, 8px)', alignItems: 'center', justifyItems: 'center',
           }}>
+            {/* Dynamic ceremony slide animation */}
+            {ceremonyData && (() => {
+              const dir = DEAL_DIRECTION[cerPhase.dealerSlot];
+              return <style>{`@keyframes cer-slide { 0% { transform: translate(-50%,-50%); opacity: 1; } 100% { transform: translate(calc(-50% + ${dir.x}), calc(-50% + ${dir.y})); opacity: 0.2; } }`}</style>;
+            })()}
+
             {/* Top player */}
             <div style={{ gridColumn: '2', gridRow: '1', position: 'relative' }}>
+              {cerPhase.showBadges && ceremonyData && (() => {
+                const seat = visual.top;
+                const palo = ceremonyData.suitAssignments[seat];
+                const isDealer = (cerPhase.phase === 'card_slide' || cerPhase.phase === 'dealing') && ceremonyData.dealer === seat;
+                return (
+                  <div className={`cer-badge${isDealer ? ' is-dealer' : ''}`} style={{ animationDelay: '300ms' }}>
+                    <div className="cer-badge-name">{gs.playerNames[seat]}</div>
+                    <div className="cer-badge-palo">{PALO_ICONS[palo]} {PALO_LABELS[palo]}</div>
+                  </div>
+                );
+              })()}
               <OnlinePlayerBox gs={gs} seat={visual.top} mySeat={mySeat} />
               {bocadillos[visual.top] && (
                 <div className="og-bocadillo og-bocadillo--above" key={bocadillos[visual.top]!.key}>{bocadillos[visual.top]!.texto}</div>
@@ -523,13 +666,24 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
             </div>
             {/* Left player */}
             <div style={{ gridColumn: '1', gridRow: '2', position: 'relative', justifySelf: 'end' }}>
+              {cerPhase.showBadges && ceremonyData && (() => {
+                const seat = visual.left;
+                const palo = ceremonyData.suitAssignments[seat];
+                const isDealer = (cerPhase.phase === 'card_slide' || cerPhase.phase === 'dealing') && ceremonyData.dealer === seat;
+                return (
+                  <div className={`cer-badge${isDealer ? ' is-dealer' : ''}`} style={{ animationDelay: '150ms' }}>
+                    <div className="cer-badge-name">{gs.playerNames[seat]}</div>
+                    <div className="cer-badge-palo">{PALO_ICONS[palo]} {PALO_LABELS[palo]}</div>
+                  </div>
+                );
+              })()}
               <OnlinePlayerBox gs={gs} seat={visual.left} mySeat={mySeat} />
               {bocadillos[visual.left] && (
                 <div className="og-bocadillo og-bocadillo--above" key={bocadillos[visual.left]!.key}>{bocadillos[visual.left]!.texto}</div>
               )}
             </div>
             {/* Mesa */}
-            <div style={{ gridColumn: '2', gridRow: '2' }}>
+            <div style={{ gridColumn: '2', gridRow: '2', position: 'relative' }}>
               <div className={`og-mesaBox${anuncio ? ` anuncio-${anuncio.tipo === 'cante' ? 'activo' : anuncio.tipo}` : ''}${trickWinner !== null ? ' anuncio-activo' : ''}`} style={{ position: 'relative' }}>
                 <MesaVisual mesa={rotateMesa(gs.mesa, mySeat)} />
                 {trickWinner !== null && (
@@ -543,9 +697,76 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
                   </div>
                 )}
               </div>
+
+              {/* Ceremony center elements */}
+              {ceremonyData && cerPhase.phase === 'text' && (
+                <div className="cer-title">¡A ver quién da!</div>
+              )}
+              {ceremonyData && cerPhase.phase === 'card_reveal' && (
+                <div className="cer-card-center">
+                  <img className="cer-card-img cer-card-reveal"
+                    src={`/cartas/${ceremonyData.card.palo}_${ceremonyData.card.num}.png`}
+                    alt={`${ceremonyData.card.num} de ${ceremonyData.card.palo}`} />
+                </div>
+              )}
+              {ceremonyData && cerPhase.phase === 'card_slide' && (
+                <div className="cer-card-center">
+                  <img className="cer-card-img" style={{ animation: 'cer-slide 1.2s ease-in-out both' }}
+                    src={`/cartas/${ceremonyData.card.palo}_${ceremonyData.card.num}.png`}
+                    alt={`${ceremonyData.card.num} de ${ceremonyData.card.palo}`} />
+                  <div className="cer-dealer-label">¡{gs.playerNames[ceremonyData.dealer]} da!</div>
+                </div>
+              )}
+              {ceremonyData && cerPhase.phase === 'dealing' && (
+                <>
+                  {cerPhase.dealCards.map(dc => {
+                    const dealerDir = DEAL_DIRECTION[cerPhase.dealerSlot];
+                    const targetDir = DEAL_DIRECTION[dc.targetSlot];
+                    return (
+                      <img key={dc.id} className="cer-deal-card" src="/cartas/dorso.png" alt="carta"
+                        style={{
+                          '--deal-ox': dealerDir.x,
+                          '--deal-oy': dealerDir.y,
+                          '--deal-tx': targetDir.x,
+                          '--deal-ty': targetDir.y,
+                        } as React.CSSProperties} />
+                    );
+                  })}
+                </>
+              )}
+              {/* REO dealing cards (inline, from dealer position) */}
+              {dealingDealer !== null && reoDealCards.length > 0 && (
+                <>
+                  {reoDealCards.map(dc => {
+                    const dealerSlot = getVisualSlot(dealingDealer, mySeat);
+                    const dealerDir = DEAL_DIRECTION[dealerSlot];
+                    const targetDir = DEAL_DIRECTION[dc.targetSlot];
+                    return (
+                      <img key={dc.id} className="cer-deal-card" src="/cartas/dorso.png" alt="carta"
+                        style={{
+                          '--deal-ox': dealerDir.x,
+                          '--deal-oy': dealerDir.y,
+                          '--deal-tx': targetDir.x,
+                          '--deal-ty': targetDir.y,
+                        } as React.CSSProperties} />
+                    );
+                  })}
+                </>
+              )}
             </div>
             {/* Right player */}
             <div style={{ gridColumn: '3', gridRow: '2', position: 'relative', justifySelf: 'start' }}>
+              {cerPhase.showBadges && ceremonyData && (() => {
+                const seat = visual.right;
+                const palo = ceremonyData.suitAssignments[seat];
+                const isDealer = (cerPhase.phase === 'card_slide' || cerPhase.phase === 'dealing') && ceremonyData.dealer === seat;
+                return (
+                  <div className={`cer-badge${isDealer ? ' is-dealer' : ''}`} style={{ animationDelay: '450ms' }}>
+                    <div className="cer-badge-name">{gs.playerNames[seat]}</div>
+                    <div className="cer-badge-palo">{PALO_ICONS[palo]} {PALO_LABELS[palo]}</div>
+                  </div>
+                );
+              })()}
               <OnlinePlayerBox gs={gs} seat={visual.right} mySeat={mySeat} />
               {bocadillos[visual.right] && (
                 <div className="og-bocadillo og-bocadillo--above" key={bocadillos[visual.right]!.key}>{bocadillos[visual.right]!.texto}</div>
@@ -553,6 +774,17 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
             </div>
             {/* Bottom player (me) */}
             <div style={{ gridColumn: '2', gridRow: '3', position: 'relative' }}>
+              {cerPhase.showBadges && ceremonyData && (() => {
+                const seat = visual.bottom;
+                const palo = ceremonyData.suitAssignments[seat];
+                const isDealer = (cerPhase.phase === 'card_slide' || cerPhase.phase === 'dealing') && ceremonyData.dealer === seat;
+                return (
+                  <div className={`cer-badge${isDealer ? ' is-dealer' : ''}`}>
+                    <div className="cer-badge-name">{gs.playerNames[seat]}</div>
+                    <div className="cer-badge-palo">{PALO_ICONS[palo]} {PALO_LABELS[palo]}</div>
+                  </div>
+                );
+              })()}
               <OnlinePlayerBox gs={gs} seat={visual.bottom} mySeat={mySeat} />
               {bocadillos[visual.bottom] && (
                 <div className="og-bocadillo og-bocadillo--below" key={bocadillos[visual.bottom]!.key}>{bocadillos[visual.bottom]!.texto}</div>
@@ -661,6 +893,12 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
       )}
 
       {gs.status === 'resumen' && <ResumenModal gs={gs} onReady={setResumenReady} />}
+
+      {/* Ceremony backdrop */}
+      {ceremonyData && cerPhase.phase !== 'done' && (
+        <div className="cer-backdrop" />
+      )}
+
     </>
   );
 }

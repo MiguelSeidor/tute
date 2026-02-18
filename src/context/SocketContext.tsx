@@ -3,11 +3,17 @@ import { io, Socket } from 'socket.io-client';
 import type { Room, RoomListItem, GameStateView, GameEvent } from '@shared/types';
 import { useAuth } from './AuthContext';
 
-import type { Seat } from '@shared/types';
+import type { Seat, Palo, Card } from '@shared/types';
 
 interface PhraseEvent {
   seat: Seat;
   texto: string;
+}
+
+export interface CeremonyData {
+  suitAssignments: Record<Seat, Palo>;
+  card: Card;
+  dealer: Seat;
 }
 
 interface SocketContextType {
@@ -17,6 +23,10 @@ interface SocketContextType {
   gameState: GameStateView | null;
   gameStarted: boolean;
   phraseEvent: PhraseEvent | null;
+  ceremonyData: CeremonyData | null;
+  clearCeremony: () => void;
+  dealingDealer: Seat | null;
+  clearDealing: () => void;
   createRoom: (name: string, piedras: 3 | 5) => Promise<string>;
   joinRoom: (roomId: string) => Promise<void>;
   leaveRoom: () => Promise<void>;
@@ -41,6 +51,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const [gameState, setGameState] = useState<GameStateView | null>(null);
   const [gameStarted, setGameStarted] = useState(false);
   const [phraseEvent, setPhraseEvent] = useState<PhraseEvent | null>(null);
+  const [ceremonyData, setCeremonyData] = useState<CeremonyData | null>(null);
+  const [dealingDealer, setDealingDealer] = useState<Seat | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -72,6 +84,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socket.on('room:list', (rooms: RoomListItem[]) => setRoomList(rooms));
     socket.on('game:state', (view: GameStateView) => setGameState(view));
     socket.on('game:started', () => setGameStarted(true));
+    socket.on('game:ceremony', (data: CeremonyData) => setCeremonyData(data));
+    socket.on('game:dealing', (data: { dealer: Seat }) => setDealingDealer(data.dealer));
     socket.on('game:phrase', (data: PhraseEvent) => setPhraseEvent(data));
     socket.on('room:deleted', () => {
       setCurrentRoom(null);
@@ -209,9 +223,12 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socketRef.current?.emit('room:list', (rooms: RoomListItem[]) => setRoomList(rooms));
   }, []);
 
+  const clearCeremony = useCallback(() => setCeremonyData(null), []);
+  const clearDealing = useCallback(() => setDealingDealer(null), []);
+
   return (
     <SocketContext.Provider value={{
-      connected, currentRoom, roomList, gameState, gameStarted, phraseEvent,
+      connected, currentRoom, roomList, gameState, gameStarted, phraseEvent, ceremonyData, clearCeremony, dealingDealer, clearDealing,
       createRoom, joinRoom, leaveRoom, setReady, startGame, sendAction, sendPhrase, setResumenReady, rejoinRoom, deleteRoom, refreshRoomList,
     }}>
       {children}

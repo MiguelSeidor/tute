@@ -10,6 +10,9 @@ import { iaEligeCarta, iaDebeIrADos, iaDebeCambiar7, iaDebeTirarselas } from "./
 import { GameError } from "./engine/tuteTypes";
 import { puedeJugar } from "./engine/tuteLogic";
 import Simulador4 from "./ui/Simulador4";
+import { useCeremonyPhase, PALO_ICONS, PALO_LABELS, DEAL_DIRECTION, getVisualSlot, CLOCKWISE } from "./ui/DealerCeremony";
+import type { DealCardAnim } from "./ui/DealerCeremony";
+import { generateCeremonyData, type CeremonyData } from "./engine/ceremonySorteo";
 import { useAuth } from "./context/AuthContext";
 import { useSocket } from "./context/SocketContext";
 import { AuthForm } from "./components/AuthForm";
@@ -131,6 +134,21 @@ export default function App_v2() {
   const [showSim, setShowSim] = React.useState(false);
   const [showPiedrasChoice, setShowPiedrasChoice] = useState(false);
   const [showBazas, setShowBazas] = useState(false);
+  const [ceremony, setCeremony] = useState<CeremonyData | null>(null);
+  const [pendingPiedras, setPendingPiedras] = useState<number>(5);
+  const [showDealing, setShowDealing] = useState<Seat | null>(null); // dealer seat for dealing animation
+  const pendingDealingDealerRef = React.useRef<Seat | null>(null);
+  const handleCeremonyCompleteRef = React.useRef<() => void>(() => {});
+  const [reoDealCards, setReoDealCards] = React.useState<DealCardAnim[]>([]);
+  const reoDealCardId = React.useRef(0);
+  const handleDealingCompleteRef = React.useRef<() => void>(() => {});
+
+  const cerPhase = useCeremonyPhase({
+    active: !!ceremony,
+    dealer: ceremony?.dealer ?? (0 as Seat),
+    onComplete: () => handleCeremonyCompleteRef.current(),
+  });
+
   const RESET_ON_REFRESH = true;
 
   // === BOCADILLOS tipo cómic ===
@@ -357,6 +375,10 @@ export default function App_v2() {
   }, [game.reoLog]);
 
   React.useEffect(() => {
+    // No actuar durante la animación de reparto o ceremonia
+    if (showDealing !== null) return;
+    if (ceremony) return;
+
     // Evitar reentradas
     if (aiBusyRef.current) return;
 
@@ -479,7 +501,7 @@ export default function App_v2() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game]);
+  }, [game, showDealing, ceremony]);
 
   // Mostrar overlay si estamos en "decidiendo_irados" y J1 es activo
   React.useEffect(() => {
@@ -502,8 +524,10 @@ export default function App_v2() {
         setGame(prev => dispatch(prev, { type: "resetSerie" }));
         setGame(prev => dispatch(prev, { type: "startRound", dealer: dealerToUse as Seat }));
       } else if (restartKind === "reo") {
-        // REO normal → start con dealer rotado que ya planificamos
-        setGame(prev => dispatch(prev, { type: "startRound", dealer: dealerToUse as Seat }));
+        // REO normal → show dealing overlay first, dispatch startRound when it completes
+        setHideSummary(true); // hide resumen modal during dealing
+        setShowDealing(dealerToUse as Seat);
+        pendingDealingDealerRef.current = dealerToUse as Seat;
       }
 
       // Limpiar flags
@@ -707,6 +731,7 @@ export default function App_v2() {
 
 
   function send(ev: GameEvent) {
+    if (showDealing !== null || ceremony) return; // Block during dealing/ceremony
     try {
       setGame(prev => dispatch(prev, ev));
     } catch (err: any) {
@@ -725,14 +750,70 @@ export default function App_v2() {
 
   function iniciarNuevaSerie(piedras: number) {
     setShowPiedrasChoice(false);
-    const randDealer = Math.floor(Math.random() * 4) as Seat;
-    setGame(prev => dispatch(prev, { type: "resetSerie", piedras }));
-    setGame(prev => dispatch(prev, { type: "startRound", dealer: randDealer }));
+    setPendingPiedras(piedras);
+    const data = generateCeremonyData();
+    setCeremony(data);
+    // Game will start when ceremony completes (handleCeremonyComplete)
+  }
+
+  handleCeremonyCompleteRef.current = () => {
+    const data = ceremony!;
+    setCeremony(null);
+    setGame(prev => dispatch(prev, { type: "resetSerie", piedras: pendingPiedras }));
+    setGame(prev => dispatch(prev, { type: "startRound", dealer: data.dealer }));
     setHideSummary(false);
     setAutoRestartSeconds(null);
     setRestartKind(null);
     setPlannedDealer(null);
+  };
+
+  function handleDealingComplete() {
+    const dealer = pendingDealingDealerRef.current ?? showDealing;
+    pendingDealingDealerRef.current = null;
+    setShowDealing(null);
+    setHideSummary(false);
+    if (dealer !== null) {
+      setGame(prev => dispatch(prev, { type: "startRound", dealer }));
+    }
   }
+
+  handleDealingCompleteRef.current = handleDealingComplete;
+
+  // REO dealing animation (replaces DealingOverlay component)
+  React.useEffect(() => {
+    if (showDealing === null) {
+      setReoDealCards([]);
+      return;
+    }
+
+    const dealer = showDealing;
+    const activos = CLOCKWISE.filter(s => s !== dealer);
+    const dealOrder: Seat[] = [];
+    for (let round = 0; round < 3; round++) {
+      for (const s of activos) dealOrder.push(s);
+    }
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const interval = 200;
+
+    dealOrder.forEach((seat, i) => {
+      timers.push(setTimeout(() => {
+        const id = reoDealCardId.current++;
+        const targetSlot = getVisualSlot(seat);
+        setReoDealCards(prev => [...prev, { id, targetSlot }]);
+        timers.push(setTimeout(() => {
+          setReoDealCards(prev => prev.filter(c => c.id !== id));
+        }, 500));
+      }, i * interval));
+    });
+
+    const totalTime = dealOrder.length * interval + 600;
+    timers.push(setTimeout(() => {
+      handleDealingCompleteRef.current();
+    }, totalTime));
+
+    return () => timers.forEach(t => clearTimeout(t));
+  }, [showDealing]);
 
   // Helpers UI
   const turno = game.turno;
@@ -741,18 +822,25 @@ export default function App_v2() {
     if (!visible) return null;
     return (
       <div style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)",
-        display: "flex", justifyContent: "center", alignItems: "center", zIndex: 99999
+        position: "absolute", inset: 0, display: "flex",
+        justifyContent: "center", alignItems: "center", zIndex: 99999,
       }}>
         <div style={{
-          background: "rgba(255,255,255,0.95)", padding: "28px 35px", borderRadius: 12,
-          border: "2px solid rgba(0,0,0,0.25)", boxShadow: "0 8px 45px rgba(0,0,0,0.35)",
-          textAlign: "center", minWidth: 280, color:"#111"
+          background: "rgba(19, 56, 31, 0.7)", backdropFilter: "blur(6px)",
+          padding: "clamp(14px, 3vw, 24px) clamp(18px, 4vw, 35px)", borderRadius: 12,
+          border: "1px solid rgba(255,255,255,0.25)", boxShadow: "0 4px 30px rgba(0,0,0,0.3)",
+          textAlign: "center", color: "#fff",
         }}>
-          <h2 style={{ marginTop: 0 }}>¿Quieres ir a los dos?</h2>
-          <div style={{ display: "flex", justifyContent: "center", gap: 20 }}>
-            <button style={{ padding: "10px 20px", fontSize: 16, borderRadius: 6 }} onClick={onYes}>Sí</button>
-            <button style={{ padding: "10px 20px", fontSize: 16, borderRadius: 6 }} onClick={onNo}>No</button>
+          <h3 style={{ marginTop: 0, marginBottom: 14, fontSize: "clamp(1rem, 3.5vw, 1.25rem)" }}>¿Quieres ir a los dos?</h3>
+          <div style={{ display: "flex", justifyContent: "center", gap: 16 }}>
+            <button style={{
+              padding: "10px 24px", fontSize: "clamp(14px, 3vw, 18px)", borderRadius: 8, fontWeight: 700,
+              background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", cursor: "pointer",
+            }} onClick={onYes}>Sí</button>
+            <button style={{
+              padding: "10px 24px", fontSize: "clamp(14px, 3vw, 18px)", borderRadius: 8, fontWeight: 700,
+              background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", cursor: "pointer",
+            }} onClick={onNo}>No</button>
           </div>
         </div>
       </div>
@@ -1652,6 +1740,108 @@ export default function App_v2() {
           .resumen-table { font-size: 10px; }
           .resumen-table th, .resumen-table td { padding: 3px 2px; }
         }
+
+        /* ── Ceremony ── */
+        @keyframes cer-pop-in {
+          from { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+          to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+        @keyframes cer-fade-in {
+          from { opacity: 0; transform: translateX(-50%) scale(0.7); }
+          to   { opacity: 1; transform: translateX(-50%) scale(1); }
+        }
+        @keyframes cer-card-flip {
+          0%   { opacity: 0; transform: translate(-50%, -50%) rotateY(90deg) scale(0.8); }
+          50%  { opacity: 1; transform: translate(-50%, -50%) rotateY(0deg) scale(1.1); }
+          100% { opacity: 1; transform: translate(-50%, -50%) rotateY(0deg) scale(1); }
+        }
+        @keyframes cer-deal-fly {
+          from { opacity: 1; transform: translate(var(--deal-ox, 0px), var(--deal-oy, 0px)) scale(0.8); }
+          to   { opacity: 0; transform: translate(var(--deal-tx), var(--deal-ty)) scale(0.4); }
+        }
+        .cer-backdrop {
+          position: fixed; inset: 0; z-index: 99998;
+          background: rgba(0, 0, 0, 0.75);
+          pointer-events: auto;
+        }
+        .cer-badge {
+          position: absolute;
+          bottom: calc(100% + 4px);
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 99999;
+          padding: clamp(4px, 1vw, 8px) clamp(8px, 2vw, 14px);
+          border-radius: 8px;
+          background: rgba(0, 0, 0, 0.9);
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          color: white;
+          font-weight: 700;
+          animation: cer-fade-in 400ms ease-out both;
+          text-align: center;
+          white-space: nowrap;
+        }
+        .cer-badge.is-dealer {
+          border-color: #ffd700;
+          box-shadow: 0 0 16px rgba(255, 215, 0, 0.6);
+          background: rgba(80, 60, 0, 0.95);
+        }
+        .cer-badge-name {
+          font-size: clamp(9px, 2vw, 13px);
+          opacity: 0.8;
+        }
+        .cer-badge-palo {
+          font-size: clamp(12px, 3vw, 22px);
+        }
+        .cer-title {
+          position: absolute;
+          top: 50%; left: 50%;
+          transform: translate(-50%, -50%);
+          z-index: 99999;
+          font-size: clamp(20px, 5vw, 36px);
+          font-weight: 900;
+          color: #ffd700;
+          text-shadow: 0 0 20px rgba(255, 215, 0, 0.6), 0 2px 8px rgba(0,0,0,0.5);
+          white-space: nowrap;
+          animation: cer-pop-in 500ms ease-out both;
+          pointer-events: none;
+        }
+        .cer-card-center {
+          position: absolute;
+          top: 50%; left: 50%;
+          transform: translate(-50%, -50%);
+          z-index: 99999;
+          pointer-events: none;
+          display: flex; flex-direction: column; align-items: center;
+        }
+        .cer-card-img {
+          width: clamp(50px, 12vw, 100px);
+          border-radius: 6px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        .cer-card-img.cer-card-reveal {
+          animation: cer-card-flip 600ms ease-out both;
+        }
+        .cer-dealer-label {
+          margin-top: clamp(6px, 1.5vw, 12px);
+          font-size: clamp(13px, 3vw, 20px);
+          font-weight: 800;
+          color: #ffd700;
+          text-shadow: 0 0 12px rgba(255, 215, 0, 0.5);
+          animation: cer-fade-in 400ms ease-out 600ms both;
+          white-space: nowrap;
+          text-align: center;
+        }
+        .cer-deal-card {
+          position: absolute;
+          width: clamp(24px, 6vw, 44px);
+          border-radius: 4px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+          top: 50%; left: 50%;
+          margin-top: clamp(-20px, -4vw, -30px);
+          margin-left: clamp(-16px, -3vw, -22px);
+          pointer-events: none;
+          animation: cer-deal-fly 500ms ease-in both;
+        }
       `}</style>
 
       <div className="page">
@@ -1677,8 +1867,29 @@ export default function App_v2() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <button
                 onClick={() => {
-                  if (window.confirm('¿Salir de la partida offline y volver al menú principal?')) {
+                  if (aiTimerRef.current) { clearTimeout(aiTimerRef.current); aiTimerRef.current = null; }
+                  setGameMode(null);
+                }}
+                style={{
+                  background: 'rgba(255,255,255,0.12)', color: '#fff', padding: '3px 10px',
+                  borderRadius: 6, cursor: 'pointer', fontSize: 'clamp(0.65rem, 2vw, 0.8rem)',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                }}
+              >
+                Salir
+              </button>
+              <button
+                onClick={() => {
+                  if (window.confirm('¿Terminar la partida? Se perderá todo el progreso.')) {
                     if (aiTimerRef.current) { clearTimeout(aiTimerRef.current); aiTimerRef.current = null; }
+                    const freshDealer = Math.floor(Math.random() * 4) as Seat;
+                    setGame(initGame(5, freshDealer));
+                    setShowPiedrasChoice(true);
+                    setHideSummary(false);
+                    setAutoRestartSeconds(null);
+                    setRestartKind(null);
+                    setPlannedDealer(null);
+                    setCeremony(null);
                     setGameMode(null);
                   }
                 }}
@@ -1688,7 +1899,7 @@ export default function App_v2() {
                   border: '1px solid rgba(255,60,60,0.5)',
                 }}
               >
-                Salir
+                Terminar
               </button>
               <button
                 onClick={() => {
@@ -1731,10 +1942,27 @@ export default function App_v2() {
               gap: "clamp(4px, 1.5vw, 12px)",
               alignItems: "center",
               justifyItems: "center",
+              overflow: "visible",
             }}
           >
+            {/* Dynamic ceremony slide animation (depends on dealer direction) */}
+            {ceremony && (() => {
+              const dir = DEAL_DIRECTION[cerPhase.dealerSlot];
+              return <style>{`@keyframes cer-slide { 0% { transform: translate(-50%,-50%); opacity: 1; } 100% { transform: translate(calc(-50% + ${dir.x}), calc(-50% + ${dir.y})); opacity: 0.2; } }`}</style>;
+            })()}
+
             {/* J3 ARRIBA (seat 2) */}
             <div style={{ gridColumn: "2", gridRow: "1", position: "relative" }}>
+              {cerPhase.showBadges && ceremony && (() => {
+                const palo = ceremony.suitAssignments[2];
+                const isDealer = (cerPhase.phase === 'card_slide' || cerPhase.phase === 'dealing') && ceremony.dealer === 2;
+                return (
+                  <div className={`cer-badge${isDealer ? ' is-dealer' : ''}`} style={{ animationDelay: '300ms', bottom: 'auto', top: '50%', transform: 'translate(-50%, -50%)' }}>
+                    <div className="cer-badge-name">J3</div>
+                    <div className="cer-badge-palo">{PALO_ICONS[palo]} {PALO_LABELS[palo]}</div>
+                  </div>
+                );
+              })()}
               <PlayerBox seat={2} game={game} send={send} revealAll={modoDestapado}/>
               {bocadillos[2] && (
                 <div className="bocadillo bocadillo--above" key={bocadillos[2].key}>{bocadillos[2].texto}</div>
@@ -1743,6 +1971,16 @@ export default function App_v2() {
 
             {/* J2 IZQUIERDA (seat 1) */}
             <div style={{ gridColumn: "1", gridRow: "2", position: "relative", justifySelf: "end" }}>
+              {cerPhase.showBadges && ceremony && (() => {
+                const palo = ceremony.suitAssignments[1];
+                const isDealer = (cerPhase.phase === 'card_slide' || cerPhase.phase === 'dealing') && ceremony.dealer === 1;
+                return (
+                  <div className={`cer-badge${isDealer ? ' is-dealer' : ''}`} style={{ animationDelay: '150ms' }}>
+                    <div className="cer-badge-name">J2</div>
+                    <div className="cer-badge-palo">{PALO_ICONS[palo]} {PALO_LABELS[palo]}</div>
+                  </div>
+                );
+              })()}
               <PlayerBox seat={1} game={game} send={send} revealAll={modoDestapado}/>
               {bocadillos[1] && (
                 <div className="bocadillo bocadillo--above" key={bocadillos[1].key}>{bocadillos[1].texto}</div>
@@ -1750,10 +1988,9 @@ export default function App_v2() {
             </div>
 
             {/* MESA CENTRO */}
-            <div style={{ gridColumn: "2", gridRow: "2" }}>
+            <div style={{ gridColumn: "2", gridRow: "2", position: "relative" }}>
               <div
                 className={`mesaBox${anuncio ? ` anuncio-${anuncio.tipo === "cante" ? "activo" : anuncio.tipo}` : ""}`}
-
                 style={{ position: "relative" }}
               >
                 <MesaVisual mesa={game.mesa} />
@@ -1763,10 +2000,156 @@ export default function App_v2() {
                   </div>
                 )}
               </div>
+
+              {/* Ceremony center elements (title, card, dealing) — positioned over mesa */}
+              {ceremony && cerPhase.phase === 'text' && (
+                <div className="cer-title">¡A ver quién da!</div>
+              )}
+              {ceremony && cerPhase.phase === 'card_reveal' && (
+                <div className="cer-card-center">
+                  <img
+                    className="cer-card-img cer-card-reveal"
+                    src={`/cartas/${ceremony.card.palo}_${ceremony.card.num}.png`}
+                    alt={`${ceremony.card.num} de ${ceremony.card.palo}`}
+                  />
+                </div>
+              )}
+              {ceremony && cerPhase.phase === 'card_slide' && (
+                <div className="cer-card-center">
+                  <img
+                    className="cer-card-img"
+                    style={{ animation: 'cer-slide 1.2s ease-in-out both' }}
+                    src={`/cartas/${ceremony.card.palo}_${ceremony.card.num}.png`}
+                    alt={`${ceremony.card.num} de ${ceremony.card.palo}`}
+                  />
+                  <div className="cer-dealer-label">
+                    ¡J{(ceremony.dealer as number) + 1} da!
+                  </div>
+                </div>
+              )}
+              {/* Ceremony dealing cards — fly from dealer to targets */}
+              {ceremony && cerPhase.phase === 'dealing' && (
+                <>
+                  {cerPhase.dealCards.map(dc => {
+                    const dealerDir = DEAL_DIRECTION[cerPhase.dealerSlot];
+                    const targetDir = DEAL_DIRECTION[dc.targetSlot];
+                    return (
+                      <img
+                        key={dc.id}
+                        className="cer-deal-card"
+                        src="/cartas/dorso.png"
+                        alt="carta"
+                        style={{
+                          '--deal-ox': dealerDir.x,
+                          '--deal-oy': dealerDir.y,
+                          '--deal-tx': targetDir.x,
+                          '--deal-ty': targetDir.y,
+                        } as React.CSSProperties}
+                      />
+                    );
+                  })}
+                </>
+              )}
+              {/* REO dealing cards — fly from dealer to targets */}
+              {showDealing !== null && reoDealCards.length > 0 && (
+                <>
+                  {reoDealCards.map(dc => {
+                    const dealerSlot = getVisualSlot(showDealing);
+                    const dealerDir = DEAL_DIRECTION[dealerSlot];
+                    const targetDir = DEAL_DIRECTION[dc.targetSlot];
+                    return (
+                      <img
+                        key={dc.id}
+                        className="cer-deal-card"
+                        src="/cartas/dorso.png"
+                        alt="carta"
+                        style={{
+                          '--deal-ox': dealerDir.x,
+                          '--deal-oy': dealerDir.y,
+                          '--deal-tx': targetDir.x,
+                          '--deal-ty': targetDir.y,
+                        } as React.CSSProperties}
+                      />
+                    );
+                  })}
+                </>
+              )}
+              {/* Piedras choice — inside mesa cell, centered over it */}
+              {showPiedrasChoice && (
+                <div style={{
+                  position: "absolute", inset: 0, display: "flex",
+                  justifyContent: "center", alignItems: "center", zIndex: 99999,
+                }}>
+                  <div style={{
+                    background: "rgba(19, 56, 31, 0.7)", backdropFilter: "blur(6px)",
+                    padding: "clamp(14px, 3vw, 24px) clamp(18px, 4vw, 35px)", borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.25)", boxShadow: "0 4px 30px rgba(0,0,0,0.3)",
+                    textAlign: "center", color: "#fff",
+                  }}>
+                    <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: "clamp(1rem, 3.5vw, 1.25rem)" }}>Nueva partida</h3>
+                    <p style={{ marginBottom: 14, opacity: 0.8, fontSize: "clamp(0.8rem, 2.5vw, 0.95rem)" }}>¿A cuántas piedras?</p>
+                    <div style={{ display: "flex", justifyContent: "center", gap: 16 }}>
+                      <button
+                        style={{
+                          padding: "10px 24px", fontSize: "clamp(14px, 3vw, 18px)", borderRadius: 8, fontWeight: 700,
+                          background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)",
+                          cursor: "pointer",
+                        }}
+                        onClick={() => iniciarNuevaSerie(3)}
+                      >
+                        3 Piedras
+                      </button>
+                      <button
+                        style={{
+                          padding: "10px 24px", fontSize: "clamp(14px, 3vw, 18px)", borderRadius: 8, fontWeight: 700,
+                          background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)",
+                          cursor: "pointer",
+                        }}
+                        onClick={() => iniciarNuevaSerie(5)}
+                      >
+                        5 Piedras
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* Decision overlay — inside mesa cell */}
+              <OverlayDecision
+                visible={showDecision}
+                onYes={() => {
+                  setShowDecision(false);
+                  setGame(prev => dispatch(prev, { type: "declareIrADos", seat: 0 }));
+                }}
+                onNo={() => {
+                  setShowDecision(false);
+                  window.setTimeout(() => {
+                    setGame(prev => {
+                      if (prev.status !== "decidiendo_irados") return prev;
+                      const candidatos = prev.activos.filter(s => s !== 0);
+                      for (const seat of candidatos) {
+                        if (iaDebeIrADos(prev, seat)) {
+                          return dispatch(prev, { type: "declareIrADos", seat });
+                        }
+                      }
+                      return dispatch(prev, { type: "lockNoIrADos" });
+                    });
+                  }, 800);
+                }}
+              />
             </div>
 
             {/* J4 DERECHA (seat 3) */}
             <div style={{ gridColumn: "3", gridRow: "2", position: "relative", justifySelf: "start" }}>
+              {cerPhase.showBadges && ceremony && (() => {
+                const palo = ceremony.suitAssignments[3];
+                const isDealer = (cerPhase.phase === 'card_slide' || cerPhase.phase === 'dealing') && ceremony.dealer === 3;
+                return (
+                  <div className={`cer-badge${isDealer ? ' is-dealer' : ''}`} style={{ animationDelay: '450ms' }}>
+                    <div className="cer-badge-name">J4</div>
+                    <div className="cer-badge-palo">{PALO_ICONS[palo]} {PALO_LABELS[palo]}</div>
+                  </div>
+                );
+              })()}
               <PlayerBox seat={3} game={game} send={send} revealAll={modoDestapado}/>
               {bocadillos[3] && (
                 <div className="bocadillo bocadillo--above" key={bocadillos[3].key}>{bocadillos[3].texto}</div>
@@ -1775,6 +2158,16 @@ export default function App_v2() {
 
             {/* J1 ABAJO (seat 0) — solo header, mano fuera del grid */}
             <div style={{ gridColumn: "2", gridRow: "3", position: "relative" }}>
+              {cerPhase.showBadges && ceremony && (() => {
+                const palo = ceremony.suitAssignments[0];
+                const isDealer = (cerPhase.phase === 'card_slide' || cerPhase.phase === 'dealing') && ceremony.dealer === 0;
+                return (
+                  <div className={`cer-badge${isDealer ? ' is-dealer' : ''}`}>
+                    <div className="cer-badge-name">J1</div>
+                    <div className="cer-badge-palo">{PALO_ICONS[palo]} {PALO_LABELS[palo]}</div>
+                  </div>
+                );
+              })()}
               <PlayerBox seat={0} game={game} send={send} revealAll={modoDestapado} hideHand/>
               {bocadillos[0] && (
                 <div className="bocadillo bocadillo--below" key={bocadillos[0].key}>{bocadillos[0].texto}</div>
@@ -1900,34 +2293,6 @@ export default function App_v2() {
         </div>
       </div>
 
-      {/* Overlay: Decisión ir a los dos (J1) */}
-      <OverlayDecision
-        visible={showDecision}
-        onYes={() => {
-          // J1 declara
-          setShowDecision(false);
-          setGame(prev => dispatch(prev, { type: "declareIrADos", seat: 0 }));
-        }}
-        onNo={() => {
-          // J1 NO quiere. Evaluamos si alguna IA quiere ir a los dos.
-          setShowDecision(false);
-          window.setTimeout(() => {
-            setGame(prev => {
-              if (prev.status !== "decidiendo_irados") return prev;
-              // Dar oportunidad a cada IA activa (no J1)
-              const candidatos = prev.activos.filter(s => s !== 0);
-              for (const seat of candidatos) {
-                if (iaDebeIrADos(prev, seat)) {
-                  return dispatch(prev, { type: "declareIrADos", seat });
-                }
-              }
-              // Nadie quiere → lockNoIrADos
-              return dispatch(prev, { type: "lockNoIrADos" });
-            });
-          }, 800);
-        }}
-      />
-
       {/* Modal Resumen: visible cuando el motor está en 'resumen' y no lo hemos ocultado con "Cerrar" */}
       <ResumenModal
         game={game}
@@ -2008,35 +2373,9 @@ export default function App_v2() {
           )}
         </div>
       )}
-      {/* Overlay: Elección de piedras (inicio de serie) */}
-      {showPiedrasChoice && (
-        <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
-          display: "flex", justifyContent: "center", alignItems: "center", zIndex: 99999
-        }}>
-          <div style={{
-            background: "rgba(255,255,255,0.95)", padding: "28px 35px", borderRadius: 12,
-            border: "2px solid rgba(0,0,0,0.25)", boxShadow: "0 8px 45px rgba(0,0,0,0.35)",
-            textAlign: "center", minWidth: 300, color: "#111"
-          }}>
-            <h2 style={{ marginTop: 0 }}>Nueva partida</h2>
-            <p style={{ marginBottom: 20 }}>¿A cuántas piedras quieres jugar?</p>
-            <div style={{ display: "flex", justifyContent: "center", gap: 20 }}>
-              <button
-                style={{ padding: "12px 28px", fontSize: 18, borderRadius: 8, fontWeight: 700 }}
-                onClick={() => iniciarNuevaSerie(3)}
-              >
-                3 Piedras
-              </button>
-              <button
-                style={{ padding: "12px 28px", fontSize: 18, borderRadius: 8, fontWeight: 700 }}
-                onClick={() => iniciarNuevaSerie(5)}
-              >
-                5 Piedras
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Backdrop oscuro durante ceremonia */}
+      {ceremony && cerPhase.phase !== 'done' && (
+        <div className="cer-backdrop" />
       )}
 
   {showSim && ReactDOM.createPortal(

@@ -225,10 +225,11 @@ export function setupSocketServer(httpServer: HttpServer) {
 
         const room = roomManager.startGame(roomId, socket.userId);
 
-        // Create game
-        gameManager.createGame(room);
+        // Create game + ceremony
+        const { ceremony } = gameManager.createGame(room);
 
         io.to(room.id).emit('room:updated', room);
+        io.to(room.id).emit('game:ceremony', ceremony);
         io.to(room.id).emit('game:started');
 
         // Send each player their view
@@ -285,7 +286,12 @@ export function setupSocketServer(httpServer: HttpServer) {
         const seat = session.userIdToSeat.get(socket.userId);
         if (seat === undefined) throw new Error('No estás en esta partida');
 
-        const { allReady } = gameManager.setResumenReady(roomId, seat);
+        const { allReady, advanceType, state } = gameManager.setResumenReady(roomId, seat);
+
+        if (allReady && advanceType === 'reo') {
+          io.to(roomId).emit('game:dealing', { dealer: state.dealer });
+        }
+
         broadcastGameViews(roomId);
         cb({ success: true });
       } catch (err: any) {

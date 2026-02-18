@@ -1,9 +1,26 @@
-import type { GameState, GameEvent, Seat, GameStateView, Room } from '@shared/types';
+import type { GameState, GameEvent, Seat, GameStateView, Room, Palo } from '@shared/types';
 import { initGame } from '@engine/tuteInit';
 import { dispatch } from '@engine/tuteReducer';
+import { PALOS, CARTAS } from '@engine/tuteTypes';
 import { prisma } from '../db/client.js';
 
 const CLOCKWISE: Seat[] = [0, 3, 2, 1];
+
+export interface CeremonyData {
+  suitAssignments: Record<Seat, Palo>;
+  card: { palo: Palo; num: typeof CARTAS[number] };
+  dealer: Seat;
+}
+
+function generateCeremonyData(): CeremonyData {
+  const shuffled = [...PALOS].sort(() => Math.random() - 0.5);
+  const suitAssignments = { 0: shuffled[0], 1: shuffled[1], 2: shuffled[2], 3: shuffled[3] } as Record<Seat, Palo>;
+  const palo = PALOS[Math.floor(Math.random() * PALOS.length)];
+  const num = CARTAS[Math.floor(Math.random() * CARTAS.length)];
+  const card = { palo, num };
+  const dealerEntry = Object.entries(suitAssignments).find(([, p]) => p === card.palo)!;
+  return { suitAssignments, card, dealer: Number(dealerEntry[0]) as Seat };
+}
 
 interface GameSession {
   roomId: string;
@@ -25,13 +42,13 @@ interface GameSession {
 export class GameManager {
   private games = new Map<string, GameSession>();
 
-  createGame(room: Room): GameState {
+  createGame(room: Room): { state: GameState; ceremony: CeremonyData } {
     if (room.players.length !== 4) {
       throw new Error('Se necesitan exactamente 4 jugadores');
     }
 
-    const dealer = (Math.floor(Math.random() * 4)) as Seat;
-    let state = initGame(room.piedras, dealer);
+    const ceremony = generateCeremonyData();
+    let state = initGame(room.piedras, ceremony.dealer);
 
     // Start first round
     state = dispatch(state, { type: 'startRound' });
@@ -56,7 +73,7 @@ export class GameManager {
     };
 
     this.games.set(room.id, session);
-    return state;
+    return { state, ceremony };
   }
 
   getSession(roomId: string): GameSession | undefined {
@@ -184,7 +201,7 @@ export class GameManager {
   }
 
   /** Mark a seat as ready to close the resumen modal. Returns whether all are ready. */
-  setResumenReady(roomId: string, seat: Seat): { allReady: boolean; state: GameState } {
+  setResumenReady(roomId: string, seat: Seat): { allReady: boolean; state: GameState; advanceType?: 'reo' | 'serie' } {
     const session = this.games.get(roomId);
     if (!session) throw new Error('Partida no encontrada');
     if (session.state.status !== 'resumen') throw new Error('No estás en fase de resumen');
@@ -198,9 +215,10 @@ export class GameManager {
 
     if (allReady) {
       // Auto-advance: finalizarReo or resetSerie
-      const actionType = session.state.serieTerminada ? 'resetSerie' : 'finalizarReo';
+      const isSerie = session.state.serieTerminada;
+      const actionType = isSerie ? 'resetSerie' : 'finalizarReo';
       const newState = this.processAction(roomId, session.seatToUserId[session.state.dealer], { type: actionType });
-      return { allReady: true, state: newState };
+      return { allReady: true, state: newState, advanceType: isSerie ? 'serie' : 'reo' };
     }
 
     return { allReady: false, state: session.state };

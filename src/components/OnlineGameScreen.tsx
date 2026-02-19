@@ -116,6 +116,15 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
     }
   }, []);
 
+  // Hook MUST be called before any conditional return (React rules of hooks)
+  const mySeat = gameState?.mySeat ?? (0 as Seat);
+  const cerPhase = useCeremonyPhase({
+    active: !!ceremonyData,
+    dealer: ceremonyData?.dealer ?? (0 as Seat),
+    mySeat,
+    onComplete: clearCeremony,
+  });
+
   if (!gameState) {
     return (
       <div className="mode-screen" style={{ gap: 24 }}>
@@ -125,16 +134,8 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
   }
 
   const gs = gameState;
-  const mySeat = gs.mySeat;
   const isMyTurn = gs.turno === mySeat;
   const visual = getVisualSeats(mySeat);
-
-  const cerPhase = useCeremonyPhase({
-    active: !!ceremonyData,
-    dealer: ceremonyData?.dealer ?? (0 as Seat),
-    mySeat,
-    onComplete: clearCeremony,
-  });
 
   // === Anuncio visual (cantes, tute, ir a los dos, tirárselas) ===
   const [anuncio, setAnuncio] = useState<{ texto: string; tipo: 'cante' | 'tute' | 'irados' | 'tirarselas' } | null>(null);
@@ -1146,6 +1147,17 @@ function ResumenModal({ gs, onReady }: { gs: GameStateView; onReady: () => void 
               );
             })}
           </tbody>
+          <tfoot>
+            <tr style={{ fontWeight: 700, borderTop: '2px solid #fff' }}>
+              <td></td>
+              <td>Total</td>
+              {([0, 1, 2, 3] as Seat[]).map(s => (
+                <td key={s} style={{
+                  background: gs.perdedores.includes(s) ? 'rgba(255,0,0,0.35)' : 'transparent',
+                }}>{gs.puntos[s]} pts</td>
+              ))}
+            </tr>
+          </tfoot>
         </table>
         </div>
 

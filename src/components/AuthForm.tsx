@@ -161,6 +161,9 @@ export function AuthForm({ onBack }: { onBack: () => void }) {
                 minLength={3}
                 style={inputStyle}
                 placeholder="Tu nombre en el juego"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
               />
             </div>
           )}

@@ -220,6 +220,9 @@ export function LobbyScreen({ onBack }: { onBack: () => void }) {
                 placeholder="Mi sala"
                 style={inputStyle}
                 maxLength={30}
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
               />
             </div>
             <div style={{ marginBottom: 12 }}>

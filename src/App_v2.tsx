@@ -1282,6 +1282,17 @@ export default function App_v2() {
                 );
               })}
             </tbody>
+            <tfoot>
+              <tr style={{ fontWeight: 700, borderTop: '2px solid #fff' }}>
+                <td></td>
+                <td>Total</td>
+                {([0, 1, 2, 3] as Seat[]).map(s => (
+                  <td key={s} style={{
+                    background: game.perdedores.includes(s) ? 'rgba(255,0,0,0.35)' : 'transparent',
+                  }}>{game.jugadores[s].puntos} pts</td>
+                ))}
+              </tr>
+            </tfoot>
           </table>
           </div>
 

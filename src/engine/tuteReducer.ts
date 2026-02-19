@@ -252,17 +252,23 @@ export function dispatch(state: GameState, event: GameEvent): GameState {
       jugadores[seat].mano = ordenarMano(mano.filter(c => !(c.palo === card.palo && c.num === card.num)));
       jugadores[seat].haJugadoAlMenosUna = true;
 
-      // Quemar cantes no usados: si el jugador sale (mesa vacía) tras ganar la última baza,
-      // cualquier palo donde tenga Rey+Caballo y no haya cantado se marca como cantado (pierde el derecho)
+      // Quemar cantes no usados: si el jugador sale (mesa vacía) tras ganar la última baza
+      // y NO cantó nada (ni cante ni tute) en este turno, pierde el derecho a todos los cantes disponibles.
+      // Si cantó al menos algo, los demás palos se conservan para futuras bazas.
       let cantesCantados = state.cantesCantados;
       if (state.mesa.length === 0 && state.ultimoGanadorBaza === seat) {
-        cantesCantados = structuredClone(cantesCantados);
-        for (const palo of ["oros", "copas", "espadas", "bastos"] as Palo[]) {
-          if (!cantesCantados[seat][palo]) {
-            const tieneRey = mano.some(c => c.palo === palo && c.num === 12);
-            const tieneCab = mano.some(c => c.palo === palo && c.num === 11);
-            if (tieneRey && tieneCab) {
-              cantesCantados[seat][palo] = true;
+        const sangoAlgoEsteTurno = state.reoLog.some(
+          (e: any) => (e.t === 'cante' || e.t === 'tute') && e.seat === seat && e.turno === state.bazaN
+        );
+        if (!sangoAlgoEsteTurno) {
+          cantesCantados = structuredClone(cantesCantados);
+          for (const palo of ["oros", "copas", "espadas", "bastos"] as Palo[]) {
+            if (!cantesCantados[seat][palo]) {
+              const tieneRey = mano.some(c => c.palo === palo && c.num === 12);
+              const tieneCab = mano.some(c => c.palo === palo && c.num === 11);
+              if (tieneRey && tieneCab) {
+                cantesCantados[seat][palo] = true;
+              }
             }
           }
         }

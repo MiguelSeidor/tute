@@ -5,29 +5,13 @@ import { Carta, MesaVisual } from '../ui/Primitives';
 import { puedeJugar } from '../engine/tuteLogic';
 import type { Card, Palo, Seat } from '../engine/tuteTypes';
 import type { GameStateView } from '@shared/types';
-import { useCeremonyPhase, PALO_ICONS, PALO_LABELS, DEAL_DIRECTION, getVisualSlot } from '../ui/DealerCeremony';
-import type { DealCardAnim } from '../ui/DealerCeremony';
-
-const CLOCKWISE: Seat[] = [0, 3, 2, 1];
-
-const FRASES_RANDOM = [
-  "De ningún cobarde se escribe ná",
-  "Hasta el rabo todo es toro",
-  "Quien más chifle, capador",
-  "A cojones vistos, macho seguro",
-  "El culo por un zarzal",
-  "Arriero somos",
-  "La habéis pillao gorda",
-  "Achiquemán",
-  "De rey parriba",
-  "Llevo un juegazo",
-  "Hasta el más tonto hace relojes",
-  "Muy mal se tié que dar",
-  "Esto es remar pa morir en la orilla",
-  "No te echa ni un manguito",
-];
-
-const FRASE_RIVAL_CANTE = "No.. si tos cantaremos";
+import { useCeremonyPhase, PALO_ICONS, PALO_LABELS, DEAL_DIRECTION, getVisualSlot, CLOCKWISE } from '../ui/DealerCeremony';
+import { FRASES_RANDOM, FRASE_RIVAL_CANTE } from '../ui/gameConstants';
+import { useCardImagePreload } from '../hooks/useCardImagePreload';
+import { useAnuncio } from '../hooks/useAnuncio';
+import { useBocadillos } from '../hooks/useBocadillos';
+import { useDealingAnimation } from '../hooks/useDealingAnimation';
+import '../ui/game.css';
 
 /**
  * Visual mapping: me at bottom, clockwise to the RIGHT.
@@ -64,26 +48,8 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
   const [handScale, setHandScale] = useState(1);
   const [showBazas, setShowBazas] = useState(false);
 
-  // ── Inline REO dealing (replaces DealingOverlay) ──
-  const [reoDealCards, setReoDealCards] = React.useState<DealCardAnim[]>([]);
-  const reoDealCardId = useRef(0);
-  const clearDealingRef = useRef(clearDealing);
-  clearDealingRef.current = clearDealing;
-
-  // ── Preload all card images on mount ──
-  useEffect(() => {
-    const palos = ['espadas', 'oros', 'bastos', 'copas'];
-    const nums = [1, 3, 6, 7, 10, 11, 12];
-    for (const p of palos)
-      for (const n of nums) {
-        const img = new Image();
-        img.src = `/cartas/${p}_${n}.png`;
-      }
-    const dorso = new Image();
-    dorso.src = '/cartas/dorso.png';
-    const piedra = new Image();
-    piedra.src = '/cartas/piedra.png';
-  }, []);
+  // ── Shared hooks ──
+  useCardImagePreload();
 
   // ── Trick winner overlay: detect when mesa is full (all active played) ──
   const [trickWinner, setTrickWinner] = useState<Seat | null>(null);
@@ -124,6 +90,7 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
     mySeat,
     onComplete: clearCeremony,
   });
+  const reoDealCards = useDealingAnimation(dealingDealer, mySeat, clearDealing);
 
   if (!gameState) {
     return (
@@ -136,61 +103,14 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
   const gs = gameState;
   const isMyTurn = gs.turno === mySeat;
   const visual = getVisualSeats(mySeat);
+  const hideCards = !!ceremonyData || dealingDealer !== null;
 
-  // === Anuncio visual (cantes, tute, ir a los dos, tirárselas) ===
-  const [anuncio, setAnuncio] = useState<{ texto: string; tipo: 'cante' | 'tute' | 'irados' | 'tirarselas' } | null>(null);
-  const anuncioLogLen = useRef(0);
+  // === Anuncio visual — handled by useAnuncio hook ===
+  const anuncio = useAnuncio(gs.reoLog, (s: Seat) => gs.playerNames[s]);
 
   // === Bocadillos ===
-  const [bocadillos, setBocadillos] = useState<Record<Seat, { texto: string; key: number } | null>>({
-    0: null, 1: null, 2: null, 3: null,
-  } as Record<Seat, { texto: string; key: number } | null>);
-  const bocadilloKeyRef = useRef(0);
+  const { bocadillos, mostrarBocadillo } = useBocadillos(3500);
   const bocadilloLogLenRef = useRef(0);
-
-  function mostrarBocadillo(seat: Seat, texto: string) {
-    bocadilloKeyRef.current++;
-    const key = bocadilloKeyRef.current;
-    setBocadillos(prev => ({ ...prev, [seat]: { texto, key } }));
-    setTimeout(() => {
-      setBocadillos(prev => prev[seat]?.key === key ? { ...prev, [seat]: null } : prev);
-    }, 3500);
-  }
-
-  // Detect anuncio from reoLog
-  useEffect(() => {
-    const log = gs.reoLog;
-    const prevLen = anuncioLogLen.current;
-    anuncioLogLen.current = log.length;
-    if (log.length <= prevLen) return;
-    for (let i = prevLen; i < log.length; i++) {
-      const e = log[i] as any;
-      if (e.t === 'tute') {
-        const kind = e.kind === 'reyes' ? '4 Reyes' : '4 Caballos';
-        setAnuncio({ texto: `${gs.playerNames[e.seat as Seat]} canta TUTE (${kind})`, tipo: 'tute' });
-        return;
-      }
-      if (e.t === 'cante') {
-        setAnuncio({ texto: `${gs.playerNames[e.seat as Seat]} canta ${e.palo} (${e.puntos})`, tipo: 'cante' });
-        return;
-      }
-      if (e.t === 'irADos') {
-        setAnuncio({ texto: `${gs.playerNames[e.seat as Seat]} va a los dos!`, tipo: 'irados' });
-        return;
-      }
-      if (e.t === 'tirarselas') {
-        setAnuncio({ texto: `${gs.playerNames[e.seat as Seat]} se las tira!`, tipo: 'tirarselas' });
-        return;
-      }
-    }
-  }, [gs.reoLog]);
-
-  // Auto-hide anuncio
-  useEffect(() => {
-    if (!anuncio) return;
-    const t = setTimeout(() => setAnuncio(null), 2000);
-    return () => clearTimeout(t);
-  }, [anuncio]);
 
   // Bocadillos from reoLog events (cantes, tute, tirárselas)
   useEffect(() => {
@@ -243,31 +163,7 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
     return () => window.removeEventListener('resize', recalcHandScale);
   }, [recalcHandScale, gs.myHand.length]);
 
-  // ── REO dealing animation (inline, from dealer position) ──
-  useEffect(() => {
-    if (dealingDealer === null) { setReoDealCards([]); return; }
-    const dealer = dealingDealer;
-    const activos = CLOCKWISE.filter(s => s !== dealer);
-    const dealOrder: Seat[] = [];
-    for (let round = 0; round < 3; round++) {
-      for (const s of activos) dealOrder.push(s);
-    }
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    const interval = 200;
-    dealOrder.forEach((seat, i) => {
-      timers.push(setTimeout(() => {
-        const id = reoDealCardId.current++;
-        const targetSlot = getVisualSlot(seat, mySeat);
-        setReoDealCards(prev => [...prev, { id, targetSlot }]);
-        timers.push(setTimeout(() => {
-          setReoDealCards(prev => prev.filter(c => c.id !== id));
-        }, 500));
-      }, i * interval));
-    });
-    const totalTime = dealOrder.length * interval + 600;
-    timers.push(setTimeout(() => { clearDealingRef.current(); }, totalTime));
-    return () => timers.forEach(t => clearTimeout(t));
-  }, [dealingDealer, mySeat]);
+  // REO dealing animation now handled by useDealingAnimation hook
 
   function showError(msg: string) {
     setError(msg);
@@ -331,255 +227,22 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
 
   return (
     <>
+      {/* CSS específico de layout online (el compartido está en game.css) */}
       <style>{`
-        :root {
-          --card-w: clamp(76px, 3vw, 132px);
-          --card-h: calc(var(--card-w) * 1.25);
-          --npc-card-w: 45px;
-          --mesa-card-w: calc(var(--card-w) * 0.85);
-          --mesa-card-h: calc(var(--mesa-card-w) * 1.45);
-        }
-        body { margin:0; background: radial-gradient(1400px 900px at 20% 10%, #2e7d32 0%, #1b5e20 60%, #0f3f14 100%);
-          font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-        #root { max-width: none; padding: 0; width: 100%; }
         .og-page {
           min-height: 100svh; display: flex; flex-direction: column; gap: 8px;
           padding: 8px; box-sizing: border-box; max-width: 1200px; margin: 0 auto; color: #fff;
         }
         .og-board { display: flex; flex-direction: column; gap: 8px; flex: 1; }
-        .og-mesaBox { margin: 0 auto; width: calc(var(--card-w) * 5.2); height: calc(var(--card-h) * 3.2);
-          border-radius: 12px; background: rgba(0,0,0,0.2); box-shadow: 0 10px 30px rgba(0,0,0,.25) inset; overflow: hidden; }
-        .piedras-dots { letter-spacing: 1px; }
-        /* Resumen modal */
-        .resumen-backdrop {
-          position: fixed; inset: 0; background: rgba(0,0,0,0.55);
-          display: flex; justify-content: center; align-items: center; z-index: 99998;
-        }
-        .resumen-panel {
-          width: min(900px, 92vw); max-height: 90vh; overflow-y: auto;
-          background: #13381f; padding: 20px; border-radius: 12px; color: white;
-          border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 10px 60px rgba(0,0,0,0.65);
-        }
-        .resumen-title { margin-top: 0; font-size: 1.2rem; }
-        .resumen-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        .resumen-table th { border-bottom: 1px solid #fff; padding: 6px; white-space: nowrap; }
-        .resumen-table td { padding: 6px; border-bottom: 1px solid #444; white-space: nowrap; }
-        .resumen-footer { margin-top: 16px; display: flex; gap: 16px; justify-content: space-between; flex-wrap: wrap; }
-        .playerHeaderLine { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 4px; }
-        .badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.18); }
-        .badge--dealer { background: linear-gradient(180deg, #ffd54f, #ffb300); color: #3b2b00; border-color: rgba(255,255,255,0.35); }
-        .badge--solo { background: rgba(0,200,120,0.25); border-color: rgba(0,255,180,0.35); }
-        .badge--eliminated { background: rgba(255,60,60,0.25); border-color: rgba(255,60,60,0.5); color: #ff6b6b; }
-        .og-mesaBox.anuncio-activo {
-          box-shadow: 0 0 12px 4px rgba(0, 255, 120, 0.5), 0 0 30px 8px rgba(0, 255, 120, 0.25), 0 10px 30px rgba(0,0,0,.25) inset;
-          border: 2px solid rgba(0, 255, 120, 0.7);
-          transition: box-shadow 0.3s ease, border 0.3s ease;
-        }
-        .og-mesaBox.anuncio-tute {
-          box-shadow: 0 0 16px 6px rgba(255, 215, 0, 0.6), 0 0 40px 12px rgba(255, 215, 0, 0.3), 0 10px 30px rgba(0,0,0,.25) inset;
-          border: 2px solid rgba(255, 215, 0, 0.8);
-        }
-        .og-mesaBox.anuncio-irados {
-          box-shadow: 0 0 12px 4px rgba(255, 140, 0, 0.5), 0 0 30px 8px rgba(255, 140, 0, 0.25), 0 10px 30px rgba(0,0,0,.25) inset;
-          border: 2px solid rgba(255, 140, 0, 0.7);
-        }
-        .og-mesaBox.anuncio-tirarselas {
-          box-shadow: 0 0 12px 4px rgba(255, 60, 60, 0.5), 0 0 30px 8px rgba(255, 60, 60, 0.25), 0 10px 30px rgba(0,0,0,.25) inset;
-          border: 2px solid rgba(255, 60, 60, 0.7);
-        }
-        @keyframes anuncio-in {
-          from { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
-          to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-        }
-        .anuncio-overlay {
-          position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-          padding: 10px 24px; border-radius: 10px; font-weight: 700; font-size: 18px;
-          text-align: center; white-space: nowrap; pointer-events: none;
-          animation: anuncio-in 250ms ease-out both;
-        }
-        .anuncio-overlay.cante {
-          background: rgba(0, 80, 40, 0.85); color: #66ffaa;
-          border: 2px solid rgba(0, 255, 120, 0.6); text-shadow: 0 0 12px rgba(0, 255, 120, 0.5);
-        }
-        .anuncio-overlay.tute {
-          background: rgba(80, 60, 0, 0.9); color: #ffd700;
-          border: 2px solid rgba(255, 215, 0, 0.7); text-shadow: 0 0 16px rgba(255, 215, 0, 0.6); font-size: 26px;
-        }
-        .anuncio-overlay.irados {
-          background: rgba(80, 40, 0, 0.9); color: #ffaa33;
-          border: 2px solid rgba(255, 140, 0, 0.6); text-shadow: 0 0 12px rgba(255, 140, 0, 0.5);
-        }
-        .anuncio-overlay.tirarselas {
-          background: rgba(100, 10, 10, 0.9); color: #ff6b6b;
-          border: 2px solid rgba(255, 60, 60, 0.7); text-shadow: 0 0 12px rgba(255, 60, 60, 0.5);
-        }
-        @keyframes bocadillo-in {
-          from { opacity: 0; transform: scale(0.7); }
-          to   { opacity: 1; transform: scale(1); }
-        }
-        @keyframes bocadillo-out {
-          from { opacity: 1; }
-          to   { opacity: 0; }
-        }
-        .og-bocadillo {
-          position: absolute; z-index: 10; padding: 8px 14px; border-radius: 14px;
-          background: rgba(255,255,255,0.95); color: #222; font-size: 13px; font-weight: 600;
-          box-shadow: 0 2px 12px rgba(0,0,0,0.3); white-space: nowrap; pointer-events: none;
-          animation: bocadillo-in 300ms ease-out both;
-        }
-        .og-bocadillo::after {
-          content: ''; position: absolute; width: 0; height: 0;
-          border-left: 8px solid transparent; border-right: 8px solid transparent;
-        }
-        .og-bocadillo--above { left: 50%; transform: translateX(-50%); bottom: calc(100% + 6px); }
-        .og-bocadillo--above::after { top: 100%; left: 50%; transform: translateX(-50%); border-top: 8px solid rgba(255,255,255,0.95); }
-        .og-bocadillo--below { left: 50%; transform: translateX(-50%); top: calc(100% + 6px); }
-        .og-bocadillo--below::after { bottom: 100%; left: 50%; transform: translateX(-50%); border-bottom: 8px solid rgba(255,255,255,0.95); }
-        /* NPC cards: overlapping fan */
-        .npc-card-fan {
-          display: flex;
-          align-items: center;
-        }
-        .npc-card-fan > img {
-          margin-left: -12px !important;
-          box-shadow: -1px 0 4px rgba(0,0,0,0.4) !important;
-          border-radius: 4px !important;
-        }
-        .npc-card-fan > img:first-child {
-          margin-left: 0 !important;
-        }
-
+        .og-hand-container img { transition: margin 0.2s; }
         @media (max-width: 600px) {
-          :root {
-            --card-w: clamp(44px, 11vw, 70px);
-            --npc-card-w: 34px;
-          }
           .og-page { font-size: 13px; }
-          .og-mesaBox {
-            width: calc(var(--card-w) * 4.5) !important;
-            height: calc(var(--card-h) * 2.8) !important;
-          }
-          .npc-card-fan > img { margin-left: -24px !important; }
-          .npc-card-fan > img:first-child { margin-left: 0 !important; }
-          .og-bocadillo { font-size: 11px; padding: 6px 10px; white-space: normal; max-width: 200px; text-align: center; }
-          .anuncio-overlay { font-size: 14px !important; padding: 8px 16px !important; white-space: normal !important; max-width: 80% !important; }
-          .badge { font-size: 10px; padding: 1px 6px; gap: 4px; }
-          .playerHeaderLine { gap: 4px; flex-wrap: wrap; font-size: 12px; }
           .og-board { gap: 4px; }
           .og-hand-container img { margin: 2px !important; }
-          .resumen-panel { padding: 12px; }
-          .resumen-title { font-size: 1rem; }
-          .resumen-table { font-size: 11px; }
-          .resumen-table th, .resumen-table td { padding: 4px 3px; }
-          .resumen-footer { gap: 10px; }
         }
         @media (max-width: 430px) {
-          :root {
-            --card-w: clamp(32px, 8.5vw, 44px);
-            --npc-card-w: 26px;
-          }
           .og-page { padding: 4px; gap: 4px; font-size: 12px; min-height: auto; }
-          .og-mesaBox {
-            width: calc(var(--card-w) * 4.2) !important;
-            height: calc(var(--card-h) * 2.6) !important;
-          }
-          .npc-card-fan > img { margin-left: -18px !important; }
-          .npc-card-fan > img:first-child { margin-left: 0 !important; }
-          .og-bocadillo { max-width: 160px; font-size: 10px; padding: 4px 8px; }
-          .anuncio-overlay { font-size: 12px !important; padding: 6px 12px !important; }
-          .badge { font-size: 9px; }
-          .playerHeaderLine { font-size: 11px; margin-bottom: 2px; }
           .og-hand-container img { margin: 0px !important; }
-          .resumen-panel { padding: 10px; width: 96vw; }
-          .resumen-title { font-size: 0.9rem; margin-bottom: 8px; }
-          .resumen-table { font-size: 10px; }
-          .resumen-table th, .resumen-table td { padding: 3px 2px; }
-          .resumen-footer { gap: 8px; font-size: 11px; }
-        }
-
-        /* ── Ceremony ── */
-        @keyframes cer-pop-in {
-          from { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
-          to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-        }
-        @keyframes cer-fade-in {
-          from { opacity: 0; transform: translateX(-50%) scale(0.7); }
-          to   { opacity: 1; transform: translateX(-50%) scale(1); }
-        }
-        @keyframes cer-card-flip {
-          0%   { opacity: 0; transform: translate(-50%, -50%) rotateY(90deg) scale(0.8); }
-          50%  { opacity: 1; transform: translate(-50%, -50%) rotateY(0deg) scale(1.1); }
-          100% { opacity: 1; transform: translate(-50%, -50%) rotateY(0deg) scale(1); }
-        }
-        @keyframes cer-deal-fly {
-          from { opacity: 1; transform: translate(var(--deal-ox, 0px), var(--deal-oy, 0px)) scale(0.8); }
-          to   { opacity: 0; transform: translate(var(--deal-tx), var(--deal-ty)) scale(0.4); }
-        }
-        .cer-backdrop {
-          position: fixed; inset: 0; z-index: 99998;
-          background: rgba(0, 0, 0, 0.75);
-          pointer-events: auto;
-        }
-        .cer-badge {
-          position: absolute;
-          bottom: calc(100% + 4px);
-          left: 50%;
-          transform: translateX(-50%);
-          z-index: 99999;
-          padding: clamp(4px, 1vw, 8px) clamp(8px, 2vw, 14px);
-          border-radius: 8px;
-          background: rgba(0, 0, 0, 0.9);
-          border: 2px solid rgba(255, 255, 255, 0.3);
-          color: white;
-          font-weight: 700;
-          animation: cer-fade-in 400ms ease-out both;
-          text-align: center;
-          white-space: nowrap;
-        }
-        .cer-badge.is-dealer {
-          border-color: #ffd700;
-          box-shadow: 0 0 16px rgba(255, 215, 0, 0.6);
-          background: rgba(80, 60, 0, 0.95);
-        }
-        .cer-badge-name { font-size: clamp(9px, 2vw, 13px); opacity: 0.8; }
-        .cer-badge-palo { font-size: clamp(12px, 3vw, 22px); }
-        .cer-title {
-          position: absolute; top: 50%; left: 50%;
-          transform: translate(-50%, -50%); z-index: 99999;
-          font-size: clamp(20px, 5vw, 36px); font-weight: 900;
-          color: #ffd700;
-          text-shadow: 0 0 20px rgba(255, 215, 0, 0.6), 0 2px 8px rgba(0,0,0,0.5);
-          white-space: nowrap;
-          animation: cer-pop-in 500ms ease-out both;
-          pointer-events: none;
-        }
-        .cer-card-center {
-          position: absolute; top: 50%; left: 50%;
-          transform: translate(-50%, -50%); z-index: 99999;
-          pointer-events: none;
-          display: flex; flex-direction: column; align-items: center;
-        }
-        .cer-card-img {
-          width: clamp(50px, 12vw, 100px); border-radius: 6px;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        }
-        .cer-card-img.cer-card-reveal { animation: cer-card-flip 600ms ease-out both; }
-        .cer-dealer-label {
-          margin-top: clamp(6px, 1.5vw, 12px);
-          font-size: clamp(13px, 3vw, 20px); font-weight: 800;
-          color: #ffd700; text-shadow: 0 0 12px rgba(255, 215, 0, 0.5);
-          animation: cer-fade-in 400ms ease-out 600ms both;
-          white-space: nowrap; text-align: center;
-        }
-        .cer-deal-card {
-          position: absolute;
-          width: clamp(24px, 6vw, 44px); border-radius: 4px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-          top: 50%; left: 50%;
-          margin-top: clamp(-20px, -4vw, -30px);
-          margin-left: clamp(-16px, -3vw, -22px);
-          pointer-events: none;
-          animation: cer-deal-fly 500ms ease-in both;
         }
       `}</style>
 
@@ -588,7 +251,7 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
           {/* Header compacto */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {gs.triunfo && (
+              {gs.triunfo && !hideCards && (
                 <Carta carta={gs.triunfo} legal={false} style={{ width: 'clamp(28px, 6vw, 40px)', margin: 0, flexShrink: 0 }} />
               )}
               <div>
@@ -654,15 +317,15 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
                 const palo = ceremonyData.suitAssignments[seat];
                 const isDealer = (cerPhase.phase === 'card_slide' || cerPhase.phase === 'dealing') && ceremonyData.dealer === seat;
                 return (
-                  <div className={`cer-badge${isDealer ? ' is-dealer' : ''}`} style={{ animationDelay: '300ms' }}>
+                  <div className={`cer-badge${isDealer ? ' is-dealer' : ''}`} style={{ animationDelay: '300ms', bottom: 'auto', top: 'calc(100% + 4px)' }}>
                     <div className="cer-badge-name">{gs.playerNames[seat]}</div>
                     <div className="cer-badge-palo">{PALO_ICONS[palo]} {PALO_LABELS[palo]}</div>
                   </div>
                 );
               })()}
-              <OnlinePlayerBox gs={gs} seat={visual.top} mySeat={mySeat} />
+              <OnlinePlayerBox gs={gs} seat={visual.top} mySeat={mySeat} hideCards={hideCards} />
               {bocadillos[visual.top] && (
-                <div className="og-bocadillo og-bocadillo--above" key={bocadillos[visual.top]!.key}>{bocadillos[visual.top]!.texto}</div>
+                <div className="bocadillo bocadillo--above" key={bocadillos[visual.top]!.key}>{bocadillos[visual.top]!.texto}</div>
               )}
             </div>
             {/* Left player */}
@@ -678,14 +341,14 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
                   </div>
                 );
               })()}
-              <OnlinePlayerBox gs={gs} seat={visual.left} mySeat={mySeat} />
+              <OnlinePlayerBox gs={gs} seat={visual.left} mySeat={mySeat} hideCards={hideCards} />
               {bocadillos[visual.left] && (
-                <div className="og-bocadillo og-bocadillo--above" key={bocadillos[visual.left]!.key}>{bocadillos[visual.left]!.texto}</div>
+                <div className="bocadillo bocadillo--above" key={bocadillos[visual.left]!.key}>{bocadillos[visual.left]!.texto}</div>
               )}
             </div>
             {/* Mesa */}
             <div style={{ gridColumn: '2', gridRow: '2', position: 'relative' }}>
-              <div className={`og-mesaBox${anuncio ? ` anuncio-${anuncio.tipo === 'cante' ? 'activo' : anuncio.tipo}` : ''}${trickWinner !== null ? ' anuncio-activo' : ''}`} style={{ position: 'relative' }}>
+              <div className={`mesaBox${anuncio ? ` anuncio-${anuncio.tipo === 'cante' ? 'activo' : anuncio.tipo}` : ''}${trickWinner !== null ? ' anuncio-activo' : ''}`} style={{ position: 'relative' }}>
                 <MesaVisual mesa={rotateMesa(gs.mesa, mySeat)} />
                 {trickWinner !== null && (
                   <div className="anuncio-overlay cante" key={`baza-${gs.bazaN}`}>
@@ -768,9 +431,9 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
                   </div>
                 );
               })()}
-              <OnlinePlayerBox gs={gs} seat={visual.right} mySeat={mySeat} />
+              <OnlinePlayerBox gs={gs} seat={visual.right} mySeat={mySeat} hideCards={hideCards} />
               {bocadillos[visual.right] && (
-                <div className="og-bocadillo og-bocadillo--above" key={bocadillos[visual.right]!.key}>{bocadillos[visual.right]!.texto}</div>
+                <div className="bocadillo bocadillo--above" key={bocadillos[visual.right]!.key}>{bocadillos[visual.right]!.texto}</div>
               )}
             </div>
             {/* Bottom player (me) */}
@@ -786,32 +449,34 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
                   </div>
                 );
               })()}
-              <OnlinePlayerBox gs={gs} seat={visual.bottom} mySeat={mySeat} />
+              <OnlinePlayerBox gs={gs} seat={visual.bottom} mySeat={mySeat} hideCards={hideCards} />
               {bocadillos[visual.bottom] && (
-                <div className="og-bocadillo og-bocadillo--below" key={bocadillos[visual.bottom]!.key}>{bocadillos[visual.bottom]!.texto}</div>
+                <div className="bocadillo bocadillo--below" key={bocadillos[visual.bottom]!.key}>{bocadillos[visual.bottom]!.texto}</div>
               )}
             </div>
           </div>
 
-          {/* My hand */}
-          <div className="og-hand-container" style={{ overflow: 'hidden', minHeight: 'var(--card-h)' }}>
-            <div ref={handRef} style={{
-              display: 'flex', justifyContent: 'center', flexWrap: 'nowrap',
-              gap: 'clamp(2px, 1vw, 6px)',
-              transform: handScale < 1 ? `scale(${handScale})` : undefined,
-              transformOrigin: 'center bottom',
-            }}>
-              {gs.myHand.length === 0 ? (
-                <span style={{ opacity: 0.5, alignSelf: 'center' }}>Sin cartas</span>
-              ) : gs.myHand.map(card => {
-                const legal = isLegal(card);
-                return (
-                  <Carta key={`${card.palo}-${card.num}`} carta={card} legal={legal}
-                    onClick={() => { if (legal) handleAction({ type: 'jugarCarta', seat: mySeat, card }); }} />
-                );
-              })}
+          {/* My hand — hidden during ceremony/dealing */}
+          {!hideCards && (
+            <div className="og-hand-container" style={{ overflow: 'hidden', minHeight: 'var(--card-h)' }}>
+              <div ref={handRef} style={{
+                display: 'flex', justifyContent: 'center', flexWrap: 'nowrap',
+                gap: 'clamp(2px, 1vw, 6px)',
+                transform: handScale < 1 ? `scale(${handScale})` : undefined,
+                transformOrigin: 'center bottom',
+              }}>
+                {gs.myHand.length === 0 ? (
+                  <span style={{ opacity: 0.5, alignSelf: 'center' }}>Sin cartas</span>
+                ) : gs.myHand.map(card => {
+                  const legal = isLegal(card);
+                  return (
+                    <Carta key={`${card.palo}-${card.num}`} carta={card} legal={legal}
+                      onClick={() => { if (legal) handleAction({ type: 'jugarCarta', seat: mySeat, card }); }} />
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -913,7 +578,7 @@ function btnStyle(bg?: string): React.CSSProperties {
   };
 }
 
-function OnlinePlayerBox({ gs, seat, mySeat }: { gs: GameStateView; seat: Seat; mySeat: Seat }) {
+function OnlinePlayerBox({ gs, seat, mySeat, hideCards = false }: { gs: GameStateView; seat: Seat; mySeat: Seat; hideCards?: boolean }) {
   const isMe = seat === mySeat;
   const name = gs.playerNames[seat] || `J${seat + 1}`;
   const isActive = gs.activos.includes(seat);
@@ -956,7 +621,7 @@ function OnlinePlayerBox({ gs, seat, mySeat }: { gs: GameStateView; seat: Seat; 
           : <span style={{ color: '#ff6b6b', fontSize: 'clamp(8px, 2vw, 11px)' }}>✕</span>}
       </div>
 
-      {!isMe && isActive && (
+      {!isMe && isActive && !hideCards && (
         <div style={{ display: 'flex', justifyContent: 'center', minHeight: 'calc(var(--npc-card-w) * 1.45)' }}>
           <div className="npc-card-fan">
             {Array.from({ length: cardCount }).map((_, i) => (

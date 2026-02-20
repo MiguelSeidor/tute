@@ -10,8 +10,7 @@ import { iaEligeCarta, iaDebeIrADos, iaDebeCambiar7, iaDebeTirarselas } from "./
 import { GameError } from "./engine/tuteTypes";
 import { puedeJugar } from "./engine/tuteLogic";
 import Simulador4 from "./ui/Simulador4";
-import { useCeremonyPhase, PALO_ICONS, PALO_LABELS, DEAL_DIRECTION, getVisualSlot, CLOCKWISE } from "./ui/DealerCeremony";
-import type { DealCardAnim } from "./ui/DealerCeremony";
+import { useCeremonyPhase, PALO_ICONS, PALO_LABELS, DEAL_DIRECTION, getVisualSlot } from "./ui/DealerCeremony";
 import { generateCeremonyData, type CeremonyData } from "./engine/ceremonySorteo";
 import { useAuth } from "./context/AuthContext";
 import { useSocket } from "./context/SocketContext";
@@ -19,28 +18,12 @@ import { AuthForm } from "./components/AuthForm";
 import { LobbyScreen } from "./components/LobbyScreen";
 import { OnlineGameScreen } from "./components/OnlineGameScreen";
 import { StatsScreen } from "./components/StatsScreen";
-
-// ========================== FRASES BOCADILLOS ==========================
-
-const FRASES_RANDOM = [
-  "De ningún cobarde se escribe ná",
-  "Hasta el rabo todo es toro",
-  "Quien más chifle, capador",
-  "A cojones vistos, macho seguro",
-  "El culo por un zarzal",
-  "Arriero somos",
-  "La habéis pillao gorda",
-  "Achiquemán",
-  "De rey parriba",
-  "Llevo un juegazo",
-  "Hasta el más tonto hace relojes",
-  "Muy mal se tié que dar",
-  "Esto es remar pa morir en la orilla",
-  "No te echa ni un manguito",
-];
-
-
-const FRASE_RIVAL_CANTE = "No.. si tos cantaremos";
+import { FRASES_RANDOM, FRASE_RIVAL_CANTE } from "./ui/gameConstants";
+import { useCardImagePreload } from "./hooks/useCardImagePreload";
+import { useAnuncio } from "./hooks/useAnuncio";
+import { useBocadillos } from "./hooks/useBocadillos";
+import { useDealingAnimation } from "./hooks/useDealingAnimation";
+import "./ui/game.css";
 
 type GameMode = "offline" | "online" | "stats" | null;
 
@@ -106,23 +89,10 @@ export default function App_v2() {
   const aiTimerRef = React.useRef<number | null>(null);
 
   // ── Preload all card images on mount ──
-  React.useEffect(() => {
-    const palos = ['espadas', 'oros', 'bastos', 'copas'];
-    const nums = [1, 3, 6, 7, 10, 11, 12];
-    for (const p of palos)
-      for (const n of nums) {
-        const img = new Image();
-        img.src = `/cartas/${p}_${n}.png`;
-      }
-    const dorso = new Image();
-    dorso.src = '/cartas/dorso.png';
-    const piedra = new Image();
-    piedra.src = '/cartas/piedra.png';
-  }, []);
+  useCardImagePreload();
 
   // === Anuncio visual (cantes, tute, ir a los dos) ===
-  const [anuncio, setAnuncio] = useState<{ texto: string; tipo: "cante" | "tute" | "irados" | "tirarselas" } | null>(null);
-  const anuncioLogLen = React.useRef(0);
+  const anuncio = useAnuncio(game.reoLog, (s: Seat) => `J${(s as number) + 1}`);
 
   // Estado: última acción por seat (se actualiza al cambiar el log)
   const [lastActionBySeat, setLastActionBySeat] = useState<Record<Seat, string>>({
@@ -139,9 +109,8 @@ export default function App_v2() {
   const [showDealing, setShowDealing] = useState<Seat | null>(null); // dealer seat for dealing animation
   const pendingDealingDealerRef = React.useRef<Seat | null>(null);
   const handleCeremonyCompleteRef = React.useRef<() => void>(() => {});
-  const [reoDealCards, setReoDealCards] = React.useState<DealCardAnim[]>([]);
-  const reoDealCardId = React.useRef(0);
   const handleDealingCompleteRef = React.useRef<() => void>(() => {});
+  const reoDealCards = useDealingAnimation(showDealing, 0 as Seat, () => handleDealingCompleteRef.current());
 
   const cerPhase = useCeremonyPhase({
     active: !!ceremony,
@@ -152,20 +121,8 @@ export default function App_v2() {
   const RESET_ON_REFRESH = true;
 
   // === BOCADILLOS tipo cómic ===
-  const [bocadillos, setBocadillos] = useState<Record<Seat, { texto: string; key: number } | null>>({
-    0: null, 1: null, 2: null, 3: null
-  });
-  const bocadilloKeyRef = React.useRef(0);
+  const { bocadillos, mostrarBocadillo } = useBocadillos(4000);
   const bocadilloLogLenRef = React.useRef(0);
-
-  function mostrarBocadillo(seat: Seat, texto: string) {
-    bocadilloKeyRef.current++;
-    const key = bocadilloKeyRef.current;
-    setBocadillos(prev => ({ ...prev, [seat]: { texto, key } }));
-    window.setTimeout(() => {
-      setBocadillos(prev => prev[seat]?.key === key ? { ...prev, [seat]: null } : prev);
-    }, 4000);
-  }
 
   React.useEffect(() => {
     // Derivamos última acción "visible" por jugador desde el log más reciente hacia atrás
@@ -200,43 +157,7 @@ export default function App_v2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.reoLog, game.activos]);
 
-  // Detectar nuevos eventos de cante/tute/irADos para mostrar anuncio visual
-  React.useEffect(() => {
-    const log = game.reoLog;
-    const prevLen = anuncioLogLen.current;
-    anuncioLogLen.current = log.length;
-
-    if (log.length <= prevLen) return; // no hay eventos nuevos
-
-    // Buscar en los eventos nuevos
-    for (let i = prevLen; i < log.length; i++) {
-      const e = log[i] as any;
-      if (e.t === "tute") {
-        const kind = e.kind === "reyes" ? "4 Reyes" : "4 Caballos";
-        setAnuncio({ texto: `J${e.seat + 1} canta TUTE (${kind})`, tipo: "tute" });
-        return;
-      }
-      if (e.t === "cante") {
-        setAnuncio({ texto: `J${e.seat + 1} canta ${e.palo} (${e.puntos})`, tipo: "cante" });
-        return;
-      }
-      if (e.t === "irADos") {
-        setAnuncio({ texto: `J${e.seat + 1} va a los dos!`, tipo: "irados" });
-        return;
-      }
-      if (e.t === "tirarselas") {
-        setAnuncio({ texto: `J${e.seat + 1} se las tira!`, tipo: "tirarselas" });
-        return;
-      }
-    }
-  }, [game.reoLog]);
-
-  // Auto-ocultar anuncio tras 2 segundos
-  React.useEffect(() => {
-    if (!anuncio) return;
-    const t = window.setTimeout(() => setAnuncio(null), 2000);
-    return () => window.clearTimeout(t);
-  }, [anuncio]);
+  // Anuncio detection + auto-hide now handled by useAnuncio hook
 
   // Cleanup global del timer IA (solo al desmontar)
   React.useEffect(() => () => {
@@ -740,11 +661,10 @@ export default function App_v2() {
           // Silenciar errores esperables si por UX aún no está todo blindado
           return;
         }
-        alert(`${err.code}: ${err.message}`);
+        console.warn(`GameError: ${err.code}: ${err.message}`);
         return;
       }
-      console.error(err);
-      alert(err?.message || "Error inesperado");
+      console.warn("Error inesperado al jugar carta:", err);
     }
   }
 
@@ -779,41 +699,7 @@ export default function App_v2() {
 
   handleDealingCompleteRef.current = handleDealingComplete;
 
-  // REO dealing animation (replaces DealingOverlay component)
-  React.useEffect(() => {
-    if (showDealing === null) {
-      setReoDealCards([]);
-      return;
-    }
-
-    const dealer = showDealing;
-    const activos = CLOCKWISE.filter(s => s !== dealer);
-    const dealOrder: Seat[] = [];
-    for (let round = 0; round < 3; round++) {
-      for (const s of activos) dealOrder.push(s);
-    }
-
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    const interval = 200;
-
-    dealOrder.forEach((seat, i) => {
-      timers.push(setTimeout(() => {
-        const id = reoDealCardId.current++;
-        const targetSlot = getVisualSlot(seat);
-        setReoDealCards(prev => [...prev, { id, targetSlot }]);
-        timers.push(setTimeout(() => {
-          setReoDealCards(prev => prev.filter(c => c.id !== id));
-        }, 500));
-      }, i * interval));
-    });
-
-    const totalTime = dealOrder.length * interval + 600;
-    timers.push(setTimeout(() => {
-      handleDealingCompleteRef.current();
-    }, totalTime));
-
-    return () => timers.forEach(t => clearTimeout(t));
-  }, [showDealing]);
+  // REO dealing animation now handled by useDealingAnimation hook
 
   // Helpers UI
   const turno = game.turno;
@@ -1379,7 +1265,7 @@ export default function App_v2() {
       for (const p of palos) {
         // ✅ Verificar si ya se cantó este palo (debe estar en el estado del motor)
         if (yaCantados[p]) {
-          console.log(`[DEBUG] Palo ${p} ya fue cantado por seat ${seat}`); // para debug
+          // ya fue cantado este palo
           continue;
         }
         
@@ -1391,7 +1277,6 @@ export default function App_v2() {
         }
       }
       
-      console.log(`[DEBUG] Cantes disponibles para seat ${seat}:`, res); // para debug
       return res;
   }
 
@@ -1500,358 +1385,23 @@ export default function App_v2() {
   return (
     <>
       <style>{bodyStyle}</style>
-      {/* Reutilizamos tu CSS (puedes moverlo a .css cuando quieras) */}
+      {/* CSS específico de layout offline (el compartido está en game.css) */}
       <style>{`
-        :root {
-          --card-w: clamp(76px, 3vw, 132px);
-          --card-h: calc(var(--card-w) * 1.25);  /* altura aprox. según tus PNG */
-          --npc-card-w: 45px;
-
-          /* Cartas en la mesa: un poco más pequeñas para que quepan 3 sin solaparse */
-          --mesa-card-w: calc(var(--card-w) * 0.85);
-          --mesa-card-h: calc(var(--mesa-card-w) * 1.45);
-        }
         .page {
           min-height: 100svh; display: flex; flex-direction: column; gap: 8px;
           padding: 8px; box-sizing: border-box; max-width: 1200px; margin: 0 auto; color: #fff;
         }
-        body {
-          margin:0;
-          background: radial-gradient(1400px 900px at 20% 10%, #2e7d32 0%, #1b5e20 60%, #0f3f14 100%);
-          font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
-        }
         .board { display: flex; flex-direction: column; gap: 8px; flex: 1; }
         .headerBar { display:flex; align-items:center; justify-content:space-between; gap: 8px; flex-wrap: wrap; }
-        .mesaBox { margin:0 auto; width: calc(var(--card-w) * 5.2); height: calc(var(--card-h) * 3.2);
-          border-radius:12px; background: rgba(0,0,0,0.2); box-shadow: 0 10px 30px rgba(0,0,0,.25) inset; overflow:hidden; }
-        .badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 2px 8px;
-          border-radius: 999px;
-          font-size: 12px;
-          font-weight: 700;
-          border: 1px solid rgba(255,255,255,0.25);
-          background: rgba(0,0,0,0.18);
-        }
-        .badge--dealer {
-          background: linear-gradient(180deg, #ffd54f, #ffb300);
-          color: #3b2b00;
-          border-color: rgba(255,255,255,0.35);
-        }
-        .badge--solo {
-          background: rgba(0,200,120,0.25);
-          border-color: rgba(0,255,180,0.35);
-        }
-        .badge--eliminated {
-          background: rgba(255,60,60,0.25);
-          border-color: rgba(255,60,60,0.5);
-          color: #ff6b6b;
-        }
-        .playerHeaderLine {
-          display: flex; align-items: center; justify-content: center; gap: 8px;
-          margin-bottom: 4px;
-        }
-        .playerActionLine {
-          font-size: 12px; opacity: .85; min-height: 16px;
-        }
-        .mesaBox.anuncio-activo {
-          box-shadow:
-            0 0 12px 4px rgba(0, 255, 120, 0.5),
-            0 0 30px 8px rgba(0, 255, 120, 0.25),
-            0 10px 30px rgba(0,0,0,.25) inset;
-          border: 2px solid rgba(0, 255, 120, 0.7);
-          transition: box-shadow 0.3s ease, border 0.3s ease;
-        }
-        .mesaBox.anuncio-tute {
-          box-shadow:
-            0 0 16px 6px rgba(255, 215, 0, 0.6),
-            0 0 40px 12px rgba(255, 215, 0, 0.3),
-            0 10px 30px rgba(0,0,0,.25) inset;
-          border: 2px solid rgba(255, 215, 0, 0.8);
-        }
-        .mesaBox.anuncio-irados {
-          box-shadow:
-            0 0 12px 4px rgba(255, 140, 0, 0.5),
-            0 0 30px 8px rgba(255, 140, 0, 0.25),
-            0 10px 30px rgba(0,0,0,.25) inset;
-          border: 2px solid rgba(255, 140, 0, 0.7);
-        }
-        @keyframes anuncio-in {
-          from { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
-          to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-        }
-        .anuncio-overlay {
-          position: absolute;
-          top: 50%; left: 50%;
-          transform: translate(-50%, -50%);
-          z-index: 10;
-          padding: 14px 28px;
-          border-radius: 12px;
-          font-size: 20px;
-          font-weight: 800;
-          text-align: center;
-          white-space: nowrap;
-          pointer-events: none;
-          animation: anuncio-in 250ms ease-out both;
-        }
-        .anuncio-overlay.cante {
-          background: rgba(0, 80, 40, 0.85);
-          color: #66ffaa;
-          border: 2px solid rgba(0, 255, 120, 0.6);
-          text-shadow: 0 0 12px rgba(0, 255, 120, 0.5);
-        }
-        .anuncio-overlay.tute {
-          background: rgba(80, 60, 0, 0.9);
-          color: #ffd700;
-          border: 2px solid rgba(255, 215, 0, 0.7);
-          text-shadow: 0 0 16px rgba(255, 215, 0, 0.6);
-          font-size: 26px;
-        }
-        .anuncio-overlay.irados {
-          background: rgba(80, 40, 0, 0.9);
-          color: #ffaa33;
-          border: 2px solid rgba(255, 140, 0, 0.6);
-          text-shadow: 0 0 12px rgba(255, 140, 0, 0.5);
-        }
-        .mesaBox.anuncio-tirarselas {
-          box-shadow:
-            0 0 12px 4px rgba(255, 60, 60, 0.5),
-            0 0 30px 8px rgba(255, 60, 60, 0.25),
-            0 10px 30px rgba(0,0,0,.25) inset;
-          border: 2px solid rgba(255, 60, 60, 0.7);
-        }
-        .anuncio-overlay.tirarselas {
-          background: rgba(100, 10, 10, 0.9);
-          color: #ff6b6b;
-          border: 2px solid rgba(255, 60, 60, 0.7);
-          text-shadow: 0 0 12px rgba(255, 60, 60, 0.5);
-        }
-
-        /* === BOCADILLOS CÓMIC === */
-        @keyframes bocadillo-in {
-          from { opacity: 0; transform: translateX(-50%) scale(0.7); }
-          to   { opacity: 1; transform: translateX(-50%) scale(1); }
-        }
-        @keyframes bocadillo-out {
-          from { opacity: 1; }
-          to   { opacity: 0; }
-        }
-        .bocadillo {
-          position: absolute;
-          left: 50%;
-          transform: translateX(-50%);
-          z-index: 20;
-          padding: 8px 16px;
-          border-radius: 18px;
-          background: #fff;
-          color: #222;
-          font-size: 14px;
-          font-weight: 700;
-          font-style: italic;
-          white-space: nowrap;
-          box-shadow: 0 3px 12px rgba(0,0,0,0.35);
-          pointer-events: none;
-          animation: bocadillo-in 300ms ease-out both;
-        }
-        .bocadillo::after {
-          content: "";
-          position: absolute;
-          left: 50%;
-          transform: translateX(-50%);
-          border: 8px solid transparent;
-        }
-        .bocadillo--above {
-          bottom: calc(100% + 10px);
-        }
-        .bocadillo--above::after {
-          top: 100%;
-          border-top-color: #fff;
-        }
-        .bocadillo--below {
-          top: calc(100% + 10px);
-        }
-        .bocadillo--below::after {
-          bottom: 100%;
-          border-bottom-color: #fff;
-        }
-        .piedras-dots { letter-spacing: 1px; }
-        /* NPC cards: overlapping fan */
-        .npc-card-fan {
-          display: flex;
-          align-items: center;
-        }
-        .npc-card-fan > img {
-          margin-left: -12px !important;
-          box-shadow: -1px 0 4px rgba(0,0,0,0.4) !important;
-          border-radius: 4px !important;
-        }
-        .npc-card-fan > img:first-child {
-          margin-left: 0 !important;
-        }
-        /* Resumen modal */
-        .resumen-backdrop {
-          position: fixed; inset: 0; background: rgba(0,0,0,0.55);
-          display: flex; justify-content: center; align-items: center; z-index: 99998;
-        }
-        .resumen-panel {
-          width: min(900px, 92vw); max-height: 90vh; overflow-y: auto;
-          background: #13381f; padding: 20px; border-radius: 12px; color: white;
-          border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 10px 60px rgba(0,0,0,0.65);
-        }
-        .resumen-title { margin-top: 0; font-size: 1.2rem; }
-        .resumen-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        .resumen-table th { border-bottom: 1px solid #fff; padding: 6px; white-space: nowrap; }
-        .resumen-table td { padding: 6px; border-bottom: 1px solid #444; white-space: nowrap; }
-
-
+        .playerActionLine { font-size: 12px; opacity: .85; min-height: 16px; }
         @media (max-width: 600px) {
-          :root {
-            --card-w: clamp(44px, 11vw, 70px);
-            --npc-card-w: 34px;
-          }
           .page { padding: 8px; gap: 8px; font-size: 13px; }
           .board { gap: 4px; }
-          .mesaBox {
-            width: calc(var(--card-w) * 4.5) !important;
-            height: calc(var(--card-h) * 2.8) !important;
-          }
-          .npc-card-fan > img { margin-left: -24px !important; }
-          .npc-card-fan > img:first-child { margin-left: 0 !important; }
-          .playerHeaderLine { gap: 4px; flex-wrap: wrap; font-size: 12px; }
-          .bocadillo { font-size: 11px; padding: 6px 10px; white-space: normal; max-width: 200px; text-align: center; }
-          .anuncio-overlay { font-size: 14px !important; padding: 8px 16px !important; white-space: normal !important; max-width: 80% !important; }
-          .badge { font-size: 10px; padding: 1px 6px; gap: 4px; }
           .handRow img { margin: 2px !important; }
-          .resumen-panel { padding: 12px; }
-          .resumen-title { font-size: 1rem; }
-          .resumen-table { font-size: 11px; }
-          .resumen-table th, .resumen-table td { padding: 4px 3px; }
         }
         @media (max-width: 430px) {
-          :root {
-            --card-w: clamp(32px, 8.5vw, 44px);
-            --npc-card-w: 26px;
-          }
           .page { padding: 4px; gap: 4px; font-size: 12px; min-height: auto; }
-          .mesaBox {
-            width: calc(var(--card-w) * 4.2) !important;
-            height: calc(var(--card-h) * 2.6) !important;
-          }
-          .npc-card-fan > img { margin-left: -18px !important; }
-          .npc-card-fan > img:first-child { margin-left: 0 !important; }
-          .bocadillo { max-width: 160px; font-size: 10px; padding: 4px 8px; }
-          .anuncio-overlay { font-size: 12px !important; padding: 6px 12px !important; }
-          .badge { font-size: 9px; }
-          .playerHeaderLine { font-size: 11px; margin-bottom: 2px; }
           .handRow img { margin: 0px !important; }
-          .resumen-panel { padding: 10px; width: 96vw; }
-          .resumen-title { font-size: 0.9rem; margin-bottom: 8px; }
-          .resumen-table { font-size: 10px; }
-          .resumen-table th, .resumen-table td { padding: 3px 2px; }
-        }
-
-        /* ── Ceremony ── */
-        @keyframes cer-pop-in {
-          from { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
-          to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-        }
-        @keyframes cer-fade-in {
-          from { opacity: 0; transform: translateX(-50%) scale(0.7); }
-          to   { opacity: 1; transform: translateX(-50%) scale(1); }
-        }
-        @keyframes cer-card-flip {
-          0%   { opacity: 0; transform: translate(-50%, -50%) rotateY(90deg) scale(0.8); }
-          50%  { opacity: 1; transform: translate(-50%, -50%) rotateY(0deg) scale(1.1); }
-          100% { opacity: 1; transform: translate(-50%, -50%) rotateY(0deg) scale(1); }
-        }
-        @keyframes cer-deal-fly {
-          from { opacity: 1; transform: translate(var(--deal-ox, 0px), var(--deal-oy, 0px)) scale(0.8); }
-          to   { opacity: 0; transform: translate(var(--deal-tx), var(--deal-ty)) scale(0.4); }
-        }
-        .cer-backdrop {
-          position: fixed; inset: 0; z-index: 99998;
-          background: rgba(0, 0, 0, 0.75);
-          pointer-events: auto;
-        }
-        .cer-badge {
-          position: absolute;
-          bottom: calc(100% + 4px);
-          left: 50%;
-          transform: translateX(-50%);
-          z-index: 99999;
-          padding: clamp(4px, 1vw, 8px) clamp(8px, 2vw, 14px);
-          border-radius: 8px;
-          background: rgba(0, 0, 0, 0.9);
-          border: 2px solid rgba(255, 255, 255, 0.3);
-          color: white;
-          font-weight: 700;
-          animation: cer-fade-in 400ms ease-out both;
-          text-align: center;
-          white-space: nowrap;
-        }
-        .cer-badge.is-dealer {
-          border-color: #ffd700;
-          box-shadow: 0 0 16px rgba(255, 215, 0, 0.6);
-          background: rgba(80, 60, 0, 0.95);
-        }
-        .cer-badge-name {
-          font-size: clamp(9px, 2vw, 13px);
-          opacity: 0.8;
-        }
-        .cer-badge-palo {
-          font-size: clamp(12px, 3vw, 22px);
-        }
-        .cer-title {
-          position: absolute;
-          top: 50%; left: 50%;
-          transform: translate(-50%, -50%);
-          z-index: 99999;
-          font-size: clamp(20px, 5vw, 36px);
-          font-weight: 900;
-          color: #ffd700;
-          text-shadow: 0 0 20px rgba(255, 215, 0, 0.6), 0 2px 8px rgba(0,0,0,0.5);
-          white-space: nowrap;
-          animation: cer-pop-in 500ms ease-out both;
-          pointer-events: none;
-        }
-        .cer-card-center {
-          position: absolute;
-          top: 50%; left: 50%;
-          transform: translate(-50%, -50%);
-          z-index: 99999;
-          pointer-events: none;
-          display: flex; flex-direction: column; align-items: center;
-        }
-        .cer-card-img {
-          width: clamp(50px, 12vw, 100px);
-          border-radius: 6px;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        }
-        .cer-card-img.cer-card-reveal {
-          animation: cer-card-flip 600ms ease-out both;
-        }
-        .cer-dealer-label {
-          margin-top: clamp(6px, 1.5vw, 12px);
-          font-size: clamp(13px, 3vw, 20px);
-          font-weight: 800;
-          color: #ffd700;
-          text-shadow: 0 0 12px rgba(255, 215, 0, 0.5);
-          animation: cer-fade-in 400ms ease-out 600ms both;
-          white-space: nowrap;
-          text-align: center;
-        }
-        .cer-deal-card {
-          position: absolute;
-          width: clamp(24px, 6vw, 44px);
-          border-radius: 4px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-          top: 50%; left: 50%;
-          margin-top: clamp(-20px, -4vw, -30px);
-          margin-left: clamp(-16px, -3vw, -22px);
-          pointer-events: none;
-          animation: cer-deal-fly 500ms ease-in both;
         }
       `}</style>
 

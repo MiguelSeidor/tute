@@ -51,21 +51,28 @@ export function MesaVisual({ mesa }: any) {
         background: "rgba(0,0,0,0.2)",
       }}
     >
-      {mesa.map((c: any, i: number) => (
-        <div key={i} style={{ position: "absolute", ...posiciones[c.seat] }}>
-          {/* Carta de mesa más pequeña */}
-          <img
-            src={`/cartas/${c.card.palo}_${c.card.num}.png`}
-            alt="carta mesa"
-            style={{
-              width: "var(--mesa-card-w)",
-              height: "var(--mesa-card-h)",
-              borderRadius: 6,
-              boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
-            }}
-          />
-        </div>
-      ))}
+      {mesa.map((c: any, i: number) => {
+        const animName =
+          c.seat === 0 ? "from-bottom" :
+          c.seat === 1 ? "from-left"   :
+          c.seat === 2 ? "from-top"    :
+          c.seat === 3 ? "from-right"  : undefined;
+        return (
+          <div key={i} style={{ position: "absolute", ...posiciones[c.seat] }}>
+            <img
+              src={`/cartas/${c.card.palo}_${c.card.num}.png`}
+              alt="carta mesa"
+              style={{
+                width: "var(--mesa-card-w)",
+                height: "var(--mesa-card-h)",
+                borderRadius: 6,
+                boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
+                animation: animName ? `${animName} 260ms ease-out both` : undefined,
+              }}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }

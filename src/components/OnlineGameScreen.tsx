@@ -593,7 +593,7 @@ function OnlinePlayerBox({ gs, seat, mySeat, hideCards = false }: { gs: GameStat
 
   return (
     <div style={{ textAlign: 'center', minWidth: 'clamp(60px, 18vw, 200px)', opacity: isConnected ? 1 : 0.5 }}>
-      <div className="playerHeaderLine">
+      <div className={`playerHeaderLine${isSolo ? ' playerHeaderLine--solo' : ''}`}>
         <span style={{ fontWeight: isMe ? 'bold' : 'normal' }}>
           {name} {isMe && '(tú)'}
         </span>

@@ -38,6 +38,18 @@ body {
   background: rgba(0,200,120,0.25);
   border-color: rgba(0,255,180,0.35);
 }
+.playerHeaderLine--solo {
+  background: rgba(0,200,120,0.15);
+  border: 2px solid rgba(0,255,180,0.6);
+  border-radius: 8px;
+  padding: 4px 10px;
+  box-shadow: 0 0 10px rgba(0,255,160,0.35), inset 0 0 8px rgba(0,255,160,0.1);
+  animation: solo-pulse 1.8s ease-in-out infinite;
+}
+@keyframes solo-pulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(0,255,160,0.35), inset 0 0 8px rgba(0,255,160,0.1); }
+  50% { box-shadow: 0 0 18px rgba(0,255,160,0.55), inset 0 0 12px rgba(0,255,160,0.2); }
+}
 .badge--eliminated {
   background: rgba(255,60,60,0.25);
   border-color: rgba(255,60,60,0.5);

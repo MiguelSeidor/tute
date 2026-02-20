@@ -760,7 +760,7 @@ export default function App_v2() {
 
     return (
       <div style={{ textAlign: "center", minWidth: 'clamp(60px, 18vw, 200px)' }}>
-        <div className="playerHeaderLine">
+        <div className={`playerHeaderLine${game.irADos === seat ? ' playerHeaderLine--solo' : ''}`}>
           <span>J{seat + 1}</span>
           <span className={`badge ${game.perdedores.includes(seat) ? 'badge--loser' : ''}`}
             style={game.perdedores.includes(seat) ? { background: 'rgba(255,60,60,0.3)', borderColor: 'rgba(255,60,60,0.6)', color: '#ff6b6b' } : {}}>

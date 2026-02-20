@@ -6,6 +6,7 @@ import { prisma } from '../db/client.js';
 import { RoomManager } from '../managers/RoomManager.js';
 import { GameManager } from '../managers/GameManager.js';
 import type { CreateRoomRequest, GameActionRequest, Seat } from '@shared/types';
+import { FRASES_PERMITIDAS } from '@shared/constants';
 
 interface AuthSocket extends Socket {
   userId: string;
@@ -301,8 +302,9 @@ export function setupSocketServer(httpServer: HttpServer) {
 
     // ── Game: Phrase (broadcast bocadillo to all players) ──
     socket.on('game:phrase', (data: { texto: string }) => {
-      if (!data.texto || typeof data.texto !== 'string' || data.texto.length > 200) return;
-      const texto = data.texto.replace(/[<>&"']/g, '');
+      if (!data.texto || typeof data.texto !== 'string') return;
+      if (!FRASES_PERMITIDAS.has(data.texto)) return;
+      const texto = data.texto;
       const roomId = roomManager.getUserRoomId(socket.userId);
       if (!roomId) return;
       const room = roomManager.getRoom(roomId);

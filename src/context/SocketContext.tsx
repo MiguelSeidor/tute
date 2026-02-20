@@ -10,6 +10,12 @@ interface PhraseEvent {
   texto: string;
 }
 
+export interface ChatMessage {
+  seat: Seat;
+  texto: string;
+  timestamp: number;
+}
+
 export interface CeremonyData {
   suitAssignments: Record<Seat, Palo>;
   card: Card;
@@ -34,6 +40,8 @@ interface SocketContextType {
   startGame: () => Promise<void>;
   sendAction: (action: GameEvent) => Promise<void>;
   sendPhrase: (texto: string) => void;
+  chatMessages: ChatMessage[];
+  sendChat: (texto: string) => void;
   setResumenReady: () => Promise<void>;
   rejoinRoom: () => Promise<boolean>;
   deleteRoom: () => Promise<void>;
@@ -53,6 +61,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const [phraseEvent, setPhraseEvent] = useState<PhraseEvent | null>(null);
   const [ceremonyData, setCeremonyData] = useState<CeremonyData | null>(null);
   const [dealingDealer, setDealingDealer] = useState<Seat | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   useEffect(() => {
     if (!user) {
@@ -83,10 +92,13 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socket.on('room:updated', (room: Room) => setCurrentRoom(room));
     socket.on('room:list', (rooms: RoomListItem[]) => setRoomList(rooms));
     socket.on('game:state', (view: GameStateView) => setGameState(view));
-    socket.on('game:started', () => setGameStarted(true));
+    socket.on('game:started', () => { setGameStarted(true); setChatMessages([]); });
     socket.on('game:ceremony', (data: CeremonyData) => setCeremonyData(data));
     socket.on('game:dealing', (data: { dealer: Seat }) => setDealingDealer(data.dealer));
     socket.on('game:phrase', (data: PhraseEvent) => setPhraseEvent(data));
+    socket.on('game:chat', (data: { seat: Seat; texto: string }) => {
+      setChatMessages(prev => [...prev.slice(-49), { seat: data.seat, texto: data.texto, timestamp: Date.now() }]);
+    });
     socket.on('room:deleted', () => {
       setCurrentRoom(null);
       setGameState(null);
@@ -172,6 +184,10 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socketRef.current?.emit('game:phrase', { texto });
   }, []);
 
+  const sendChat = useCallback((texto: string) => {
+    socketRef.current?.emit('game:chat', { texto }, () => {});
+  }, []);
+
   const setResumenReady = useCallback(async () => {
     const socket = socketRef.current;
     if (!socket) throw new Error('Socket no conectado');
@@ -229,7 +245,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   return (
     <SocketContext.Provider value={{
       connected, currentRoom, roomList, gameState, gameStarted, phraseEvent, ceremonyData, clearCeremony, dealingDealer, clearDealing,
-      createRoom, joinRoom, leaveRoom, setReady, startGame, sendAction, sendPhrase, setResumenReady, rejoinRoom, deleteRoom, refreshRoomList,
+      createRoom, joinRoom, leaveRoom, setReady, startGame, sendAction, sendPhrase, chatMessages, sendChat, setResumenReady, rejoinRoom, deleteRoom, refreshRoomList,
     }}>
       {children}
     </SocketContext.Provider>

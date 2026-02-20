@@ -6,7 +6,8 @@ import { puedeJugar } from '../engine/tuteLogic';
 import type { Card, Palo, Seat } from '../engine/tuteTypes';
 import type { GameStateView } from '@shared/types';
 import { useCeremonyPhase, PALO_ICONS, PALO_LABELS, DEAL_DIRECTION, getVisualSlot, CLOCKWISE } from '../ui/DealerCeremony';
-import { FRASES_RANDOM, FRASE_RIVAL_CANTE } from '../ui/gameConstants';
+import { FRASE_RIVAL_CANTE } from '../ui/gameConstants';
+import { ChatBar } from './ChatBar';
 import { useCardImagePreload } from '../hooks/useCardImagePreload';
 import { useAnuncio } from '../hooks/useAnuncio';
 import { useBocadillos } from '../hooks/useBocadillos';
@@ -39,7 +40,7 @@ function rotateMesa(mesa: { seat: Seat; card: Card }[], mySeat: Seat) {
 }
 
 export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
-  const { gameState, sendAction, sendPhrase, setResumenReady, phraseEvent, leaveRoom, deleteRoom, currentRoom, ceremonyData, clearCeremony, dealingDealer, clearDealing } = useSocket();
+  const { gameState, sendAction, sendPhrase, chatMessages, sendChat, setResumenReady, phraseEvent, leaveRoom, deleteRoom, currentRoom, ceremonyData, clearCeremony, dealingDealer, clearDealing } = useSocket();
   const { user } = useAuth();
   const isHost = currentRoom?.hostUserId === user?.id;
   const [error, setError] = useState('');
@@ -155,6 +156,16 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
     if (!phraseEvent) return;
     mostrarBocadillo(phraseEvent.seat, phraseEvent.texto);
   }, [phraseEvent]);
+
+  // Bocadillos from free chat
+  const lastChatLenRef = useRef(0);
+  useEffect(() => {
+    if (chatMessages.length > lastChatLenRef.current) {
+      const msg = chatMessages[chatMessages.length - 1];
+      mostrarBocadillo(msg.seat, msg.texto);
+    }
+    lastChatLenRef.current = chatMessages.length;
+  }, [chatMessages.length]);
 
   // Auto-scale hand to fit container
   useEffect(() => {
@@ -505,29 +516,6 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
                 Bazas ({myBazas.length})
               </button>
             )}
-            <select
-              value=""
-              onChange={(e) => {
-                if (e.target.value) {
-                  sendPhrase(e.target.value);
-                  e.target.value = '';
-                }
-              }}
-              style={{
-                padding: 'clamp(4px, 1.5vw, 6px) clamp(6px, 2vw, 10px)', borderRadius: 6,
-                fontSize: 'clamp(11px, 2.5vw, 13px)',
-                background: 'rgba(255,255,255,0.12)', color: '#fff',
-                border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer',
-                maxWidth: 200,
-              }}
-              title="Elige una frase para tu bocadillo"
-            >
-              <option value="" disabled>Decir algo...</option>
-              <option value="Tengo salida" style={{ color: '#111' }}>Tengo salida</option>
-              {FRASES_RANDOM.map((f, i) => (
-                <option key={i} value={f} style={{ color: '#111' }}>{f}</option>
-              ))}
-            </select>
             {gs.status === 'resumen' && !gs.serieTerminada && (
               <button style={btnStyle()} onClick={() => handleAction({ type: 'finalizarReo' })}>Siguiente ronda</button>
             )}
@@ -535,6 +523,11 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
               <button style={btnStyle()} onClick={() => handleAction({ type: 'resetSerie' })}>Nueva serie</button>
             )}
           </div>
+
+          <ChatBar
+            onSendChat={sendChat}
+            onSendPhrase={sendPhrase}
+          />
 
           {/* Bazas modal */}
           {showBazas && (

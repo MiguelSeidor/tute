@@ -314,6 +314,29 @@ export function setupSocketServer(httpServer: HttpServer) {
       io.to(roomId).emit('game:phrase', { seat: player.seat, texto });
     });
 
+    // ── Game: Free chat (broadcast to all players) ──
+    let lastChatTime = 0;
+    socket.on('game:chat', (data: { texto: string }, cb: Function) => {
+      try {
+        if (!data.texto || typeof data.texto !== 'string') return cb?.({ success: false });
+        const now = Date.now();
+        if (now - lastChatTime < 2000) return cb?.({ success: false, error: 'Espera un momento' });
+        const texto = data.texto.trim().slice(0, 60).replace(/[<>&"']/g, '');
+        if (!texto) return cb?.({ success: false });
+        lastChatTime = now;
+        const roomId = roomManager.getUserRoomId(socket.userId);
+        if (!roomId) return cb?.({ success: false });
+        const room = roomManager.getRoom(roomId);
+        if (!room) return cb?.({ success: false });
+        const player = room.players.find(p => p.userId === socket.userId);
+        if (!player || player.seat === null) return cb?.({ success: false });
+        io.to(roomId).emit('game:chat', { seat: player.seat, texto });
+        cb?.({ success: true });
+      } catch (err: any) {
+        cb?.({ success: false, error: err.message });
+      }
+    });
+
     // ── Disconnect ──
     socket.on('disconnect', () => {
       console.log(`[socket] Desconectado: ${socket.username} (${socket.id})`);

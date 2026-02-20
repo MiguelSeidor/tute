@@ -237,6 +237,11 @@ export class GameManager {
     const newState = dispatch(session.state, { type: 'resolverBaza' });
     session.state = newState;
 
+    // Reset resumen ready tracking when entering resumen
+    if (newState.status === 'resumen') {
+      session.resumenReady = new Set();
+    }
+
     // Save game result when series ends
     if (newState.serieTerminada && newState.status === 'resumen' && !session.resultSaved) {
       session.resultSaved = true;

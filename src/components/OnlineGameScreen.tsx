@@ -631,24 +631,16 @@ function OnlinePlayerBox({ gs, seat, mySeat, hideCards = false }: { gs: GameStat
         </div>
       )}
 
-      {isTurn && isActive && isConnected && (
-        <div style={{
-          marginTop: 4, padding: '2px 10px', borderRadius: 999, display: 'inline-block',
-          background: 'rgba(255,220,60,0.2)', border: '1px solid rgba(255,220,60,0.4)',
-          fontSize: '0.75rem', fontWeight: 700, color: '#ffd740',
-        }}>
-          ⏳ {isMe ? 'Tu turno' : 'Su turno'}
-        </div>
-      )}
-      {isTurn && isActive && !isConnected && (
-        <div style={{
-          marginTop: 4, padding: '2px 10px', borderRadius: 999, display: 'inline-block',
-          background: 'rgba(255,165,0,0.2)', border: '1px solid rgba(255,165,0,0.4)',
-          fontSize: '0.75rem', fontWeight: 700, color: '#ffaa33',
-        }}>
-          Esperando reconexión...
-        </div>
-      )}
+      <div style={{
+        marginTop: 4, padding: '2px 10px', borderRadius: 999, display: 'inline-block',
+        fontSize: '0.75rem', fontWeight: 700,
+        visibility: isTurn && isActive ? 'visible' : 'hidden',
+        ...(isTurn && isActive && !isConnected
+          ? { background: 'rgba(255,165,0,0.2)', border: '1px solid rgba(255,165,0,0.4)', color: '#ffaa33' }
+          : { background: 'rgba(255,220,60,0.2)', border: '1px solid rgba(255,220,60,0.4)', color: '#ffd740' }),
+      }}>
+        {isTurn && isActive && !isConnected ? 'Esperando reconexión...' : `⏳ ${isMe ? 'Tu turno' : 'Su turno'}`}
+      </div>
     </div>
   );
 }

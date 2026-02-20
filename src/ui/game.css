@@ -71,35 +71,37 @@ body {
   background: rgba(0,0,0,0.2);
   box-shadow: 0 10px 30px rgba(0,0,0,.25) inset;
   overflow: hidden;
+  border: 2px solid transparent;
+  box-sizing: border-box;
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
 }
 .mesaBox.anuncio-activo {
   box-shadow:
     0 0 12px 4px rgba(0, 255, 120, 0.5),
     0 0 30px 8px rgba(0, 255, 120, 0.25),
     0 10px 30px rgba(0,0,0,.25) inset;
-  border: 2px solid rgba(0, 255, 120, 0.7);
-  transition: box-shadow 0.3s ease, border 0.3s ease;
+  border-color: rgba(0, 255, 120, 0.7);
 }
 .mesaBox.anuncio-tute {
   box-shadow:
     0 0 16px 6px rgba(255, 215, 0, 0.6),
     0 0 40px 12px rgba(255, 215, 0, 0.3),
     0 10px 30px rgba(0,0,0,.25) inset;
-  border: 2px solid rgba(255, 215, 0, 0.8);
+  border-color: rgba(255, 215, 0, 0.8);
 }
 .mesaBox.anuncio-irados {
   box-shadow:
     0 0 12px 4px rgba(255, 140, 0, 0.5),
     0 0 30px 8px rgba(255, 140, 0, 0.25),
     0 10px 30px rgba(0,0,0,.25) inset;
-  border: 2px solid rgba(255, 140, 0, 0.7);
+  border-color: rgba(255, 140, 0, 0.7);
 }
 .mesaBox.anuncio-tirarselas {
   box-shadow:
     0 0 12px 4px rgba(255, 60, 60, 0.5),
     0 0 30px 8px rgba(255, 60, 60, 0.25),
     0 10px 30px rgba(0,0,0,.25) inset;
-  border: 2px solid rgba(255, 60, 60, 0.7);
+  border-color: rgba(255, 60, 60, 0.7);
 }
 
 /* ── Anuncio overlay ── */

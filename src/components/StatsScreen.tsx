@@ -104,6 +104,7 @@ function RankingTab({ ranking, currentUserId }: { ranking: RankingEntry[]; curre
           <tr>
             <th style={thStyle}>#</th>
             <th style={{ ...thStyle, textAlign: 'left' }}>Jugador</th>
+            <th style={thStyle}>ELO</th>
             <th style={thStyle}>V</th>
             <th style={thStyle}>P</th>
             <th style={thStyle}>%</th>
@@ -119,6 +120,7 @@ function RankingTab({ ranking, currentUserId }: { ranking: RankingEntry[]; curre
               }}>
                 <td style={tdStyle}>{i + 1}</td>
                 <td style={{ ...tdStyle, textAlign: 'left' }}>{r.username}{isMe ? ' (tú)' : ''}</td>
+                <td style={{ ...tdStyle, fontWeight: 700, color: '#ffd740' }}>{r.elo}</td>
                 <td style={tdStyle}>{r.wins}</td>
                 <td style={tdStyle}>{r.gamesPlayed}</td>
                 <td style={tdStyle}>{r.winRate}%</td>
@@ -147,10 +149,26 @@ function StatsTab({ stats }: { stats: PlayerStats | null }) {
     { label: 'Win Rate', value: `${stats.winRate}%` },
     { label: 'Racha actual', value: stats.currentStreak },
     { label: 'Mejor racha', value: stats.bestStreak },
+    { label: 'Puntos totales', value: stats.totalPuntos },
+    { label: 'Bazas ganadas', value: stats.totalBazas },
+    { label: 'Cantes 20', value: stats.totalCantes20 },
+    { label: 'Cantes 40', value: stats.totalCantes40 },
+    { label: 'Tutes', value: stats.totalTutes },
+    { label: 'Ir a dos', value: stats.totalIrADos },
+    { label: 'Pts/partida', value: stats.avgPuntosPerGame },
   ];
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
+      {/* ELO card destacado */}
+      <div style={{
+        padding: '16px 12px', borderRadius: 10, textAlign: 'center',
+        background: 'rgba(255,215,64,0.12)', border: '1px solid rgba(255,215,64,0.4)',
+        gridColumn: '1 / -1',
+      }}>
+        <div style={{ fontSize: '2rem', fontWeight: 700, color: '#ffd740' }}>{stats.elo}</div>
+        <div style={{ fontSize: '0.85rem', opacity: 0.7, marginTop: 4 }}>ELO Rating</div>
+      </div>
       {cards.map(c => (
         <div key={c.label} style={{
           padding: '16px 12px', borderRadius: 10, textAlign: 'center',
@@ -171,33 +189,48 @@ function HistoryTab({ games }: { games: GameHistoryEntry[] }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 400, overflowY: 'auto' }}>
-      {games.map(g => (
-        <div key={g.id} style={{
-          padding: '12px 14px', borderRadius: 10,
-          background: g.myResult === 'win' ? 'rgba(100,255,150,0.08)' : 'rgba(255,60,60,0.08)',
-          border: `1px solid ${g.myResult === 'win' ? 'rgba(100,255,150,0.3)' : 'rgba(255,60,60,0.3)'}`,
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <span style={{ fontWeight: 700 }}>{g.roomName}</span>
-            <span style={{
-              fontSize: '0.8rem', padding: '2px 8px', borderRadius: 999, fontWeight: 600,
-              background: g.myResult === 'win' ? 'rgba(100,255,150,0.2)' : 'rgba(255,60,60,0.2)',
-              color: g.myResult === 'win' ? '#66ffaa' : '#ff6b6b',
-            }}>
-              {g.myResult === 'win' ? 'Victoria' : 'Derrota'}
-            </span>
+      {games.map(g => {
+        const elo = g.myStats.eloChange;
+        const eloColor = elo > 0 ? '#66ffaa' : elo < 0 ? '#ff6b6b' : 'rgba(255,255,255,0.5)';
+        const eloText = elo > 0 ? `+${elo}` : `${elo}`;
+        return (
+          <div key={g.id} style={{
+            padding: '12px 14px', borderRadius: 10,
+            background: g.myResult === 'win' ? 'rgba(100,255,150,0.08)' : 'rgba(255,60,60,0.08)',
+            border: `1px solid ${g.myResult === 'win' ? 'rgba(100,255,150,0.3)' : 'rgba(255,60,60,0.3)'}`,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontWeight: 700 }}>{g.roomName}</span>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: eloColor }}>{eloText} ELO</span>
+                <span style={{
+                  fontSize: '0.8rem', padding: '2px 8px', borderRadius: 999, fontWeight: 600,
+                  background: g.myResult === 'win' ? 'rgba(100,255,150,0.2)' : 'rgba(255,60,60,0.2)',
+                  color: g.myResult === 'win' ? '#66ffaa' : '#ff6b6b',
+                }}>
+                  {g.myResult === 'win' ? 'Victoria' : 'Derrota'}
+                </span>
+              </div>
+            </div>
+            <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>
+              {new Date(g.completedAt).toLocaleDateString('es-ES', {
+                day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+              })}
+              {' · '}{g.piedrasCount} piedras
+              {g.durationMinutes > 0 && <>{' · '}{g.durationMinutes} min</>}
+            </div>
+            <div style={{ fontSize: '0.8rem', marginTop: 4, opacity: 0.8 }}>
+              {g.players.map(p => `${p.username}${p.isWinner ? ' ★' : ''}`).join(', ')}
+            </div>
+            <div style={{ fontSize: '0.75rem', marginTop: 4, opacity: 0.6 }}>
+              {g.myStats.totalPuntos} pts · {g.myStats.bazasGanadas} bazas
+              {g.myStats.cantes20 + g.myStats.cantes40 > 0 && <>{' · '}{g.myStats.cantes20 + g.myStats.cantes40} cantes</>}
+              {g.myStats.tutes > 0 && <>{' · '}{g.myStats.tutes} tutes</>}
+              {g.myStats.vecesIrADos > 0 && <>{' · '}{g.myStats.vecesIrADos}x ir a dos</>}
+            </div>
           </div>
-          <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>
-            {new Date(g.completedAt).toLocaleDateString('es-ES', {
-              day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-            })}
-            {' · '}{g.piedrasCount} piedras
-          </div>
-          <div style={{ fontSize: '0.8rem', marginTop: 4, opacity: 0.8 }}>
-            {g.players.map(p => `${p.username}${p.isWinner ? ' ★' : ''}`).join(', ')}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

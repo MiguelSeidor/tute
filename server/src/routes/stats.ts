@@ -9,15 +9,15 @@ const router = Router();
 router.get('/ranking', authMiddleware, async (_req: Request, res: Response) => {
   try {
     const ranking = await prisma.$queryRaw<
-      { userId: string; username: string; wins: bigint; gamesPlayed: bigint }[]
+      { userId: string; username: string; elo: number; wins: bigint; gamesPlayed: bigint }[]
     >`
-      SELECT gp."userId", u.username,
+      SELECT gp."userId", u.username, u.elo,
         COUNT(*) FILTER (WHERE gp."isWinner" = true) AS wins,
         COUNT(*) AS "gamesPlayed"
       FROM game_players gp
       JOIN users u ON u.id = gp."userId"
-      GROUP BY gp."userId", u.username
-      ORDER BY wins DESC, "gamesPlayed" ASC
+      GROUP BY gp."userId", u.username, u.elo
+      ORDER BY u.elo DESC, wins DESC
       LIMIT 20
     `;
 
@@ -30,6 +30,7 @@ router.get('/ranking', authMiddleware, async (_req: Request, res: Response) => {
         winRate: Number(r.gamesPlayed) > 0
           ? Math.round((Number(r.wins) / Number(r.gamesPlayed)) * 100)
           : 0,
+        elo: r.elo,
       })),
     });
   } catch (error) {
@@ -59,18 +60,36 @@ router.get('/history', authMiddleware, async (req: Request, res: Response) => {
     });
 
     res.json({
-      games: myGames.map(gp => ({
-        id: gp.game.id,
-        roomName: gp.game.roomName,
-        piedrasCount: gp.game.piedrasCount,
-        completedAt: gp.game.completedAt.toISOString(),
-        players: gp.game.players.map(p => ({
-          username: p.user.username,
-          isWinner: p.isWinner,
-          finalPiedras: p.finalPiedras,
-        })),
-        myResult: gp.isWinner ? 'win' as const : 'loss' as const,
-      })),
+      games: myGames.map(gp => {
+        const startMs = gp.game.startedAt.getTime();
+        const endMs = gp.game.completedAt.getTime();
+        const durationMinutes = Math.round((endMs - startMs) / 60000);
+        return {
+          id: gp.game.id,
+          roomName: gp.game.roomName,
+          piedrasCount: gp.game.piedrasCount,
+          startedAt: gp.game.startedAt.toISOString(),
+          completedAt: gp.game.completedAt.toISOString(),
+          durationMinutes,
+          players: gp.game.players.map(p => ({
+            username: p.user.username,
+            isWinner: p.isWinner,
+            finalPiedras: p.finalPiedras,
+            totalPuntos: p.totalPuntos,
+            bazasGanadas: p.bazasGanadas,
+          })),
+          myResult: gp.isWinner ? 'win' as const : 'loss' as const,
+          myStats: {
+            totalPuntos: gp.totalPuntos,
+            bazasGanadas: gp.bazasGanadas,
+            cantes20: gp.cantes20,
+            cantes40: gp.cantes40,
+            tutes: gp.tutes,
+            vecesIrADos: gp.vecesIrADos,
+            eloChange: gp.eloAfter - gp.eloBefore,
+          },
+        };
+      }),
     });
   } catch (error) {
     console.error('Error en history:', error);
@@ -83,11 +102,28 @@ router.get('/me', authMiddleware, async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
 
-    const allGames = await prisma.gamePlayer.findMany({
-      where: { userId },
-      orderBy: { game: { completedAt: 'desc' } },
-      select: { isWinner: true },
-    });
+    const [allGames, user, aggregates] = await Promise.all([
+      prisma.gamePlayer.findMany({
+        where: { userId },
+        orderBy: { game: { completedAt: 'desc' } },
+        select: { isWinner: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { elo: true },
+      }),
+      prisma.gamePlayer.aggregate({
+        where: { userId },
+        _sum: {
+          totalPuntos: true,
+          bazasGanadas: true,
+          cantes20: true,
+          cantes40: true,
+          tutes: true,
+          vecesIrADos: true,
+        },
+      }),
+    ]);
 
     const gamesPlayed = allGames.length;
     const wins = allGames.filter(g => g.isWinner).length;
@@ -112,8 +148,20 @@ router.get('/me', authMiddleware, async (req: Request, res: Response) => {
       }
     }
 
+    const totalPuntos = aggregates._sum.totalPuntos ?? 0;
+
     res.json({
-      stats: { gamesPlayed, wins, losses, winRate, currentStreak, bestStreak },
+      stats: {
+        gamesPlayed, wins, losses, winRate, currentStreak, bestStreak,
+        elo: user?.elo ?? 1000,
+        totalPuntos,
+        totalBazas: aggregates._sum.bazasGanadas ?? 0,
+        totalCantes20: aggregates._sum.cantes20 ?? 0,
+        totalCantes40: aggregates._sum.cantes40 ?? 0,
+        totalTutes: aggregates._sum.tutes ?? 0,
+        totalIrADos: aggregates._sum.vecesIrADos ?? 0,
+        avgPuntosPerGame: gamesPlayed > 0 ? Math.round(totalPuntos / gamesPlayed) : 0,
+      },
     });
   } catch (error) {
     console.error('Error en stats/me:', error);

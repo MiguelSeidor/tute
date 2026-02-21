@@ -22,6 +22,25 @@ function generateCeremonyData(): CeremonyData {
   return { suitAssignments, card, dealer: Number(dealerEntry[0]) as Seat };
 }
 
+interface PlayerSeriesStats {
+  totalPuntos: number;
+  bazasGanadas: number;
+  cantes20: number;
+  cantes40: number;
+  tutes: number;
+  vecesIrADos: number;
+}
+
+function emptyStats(): PlayerSeriesStats {
+  return { totalPuntos: 0, bazasGanadas: 0, cantes20: 0, cantes40: 0, tutes: 0, vecesIrADos: 0 };
+}
+
+function calculateElo(myElo: number, oppAvgElo: number, won: boolean): number {
+  const K = 32;
+  const expected = 1 / (1 + Math.pow(10, (oppAvgElo - myElo) / 400));
+  return Math.round(myElo + K * ((won ? 1 : 0) - expected));
+}
+
 interface GameSession {
   roomId: string;
   roomName: string;
@@ -30,6 +49,8 @@ interface GameSession {
   userIdToSeat: Map<string, Seat>;
   playerNames: Record<Seat, string>;
   resultSaved: boolean;
+  startTime: Date;
+  seriesStats: Record<Seat, PlayerSeriesStats>;
 
   // Ir-a-dos phase tracking (server manages per-player turns)
   irADosPending: Seat[];    // active players who haven't decided yet
@@ -67,6 +88,8 @@ export class GameManager {
     const session: GameSession = {
       roomId: room.id, roomName: room.name, state, seatToUserId, userIdToSeat, playerNames,
       resultSaved: false,
+      startTime: new Date(),
+      seriesStats: { 0: emptyStats(), 1: emptyStats(), 2: emptyStats(), 3: emptyStats() } as Record<Seat, PlayerSeriesStats>,
       irADosPending: [...state.activos],
       irADosCurrent: 0,
       resumenReady: new Set(),
@@ -164,6 +187,11 @@ export class GameManager {
       );
     }
 
+    // Accumulate stats from current REO before starting a new round
+    if (event.type === 'finalizarReo' && !newState.serieTerminada) {
+      this.accumulateReoStats(session, state); // 'state' = pre-dispatch, still has reoLog
+    }
+
     // Auto-start next round after finalizarReo (if series not over)
     if (event.type === 'finalizarReo' && !newState.serieTerminada) {
       // Rotate dealer clockwise, skipping eliminated
@@ -189,6 +217,8 @@ export class GameManager {
     // After resetSerie, auto-start first round
     if (event.type === 'resetSerie') {
       session.resultSaved = false;
+      session.startTime = new Date();
+      session.seriesStats = { 0: emptyStats(), 1: emptyStats(), 2: emptyStats(), 3: emptyStats() } as Record<Seat, PlayerSeriesStats>;
       const randDealer = CLOCKWISE[Math.floor(Math.random() * 4)];
       newState = dispatch(newState, { type: 'startRound', dealer: randDealer });
       session.state = newState;
@@ -315,28 +345,110 @@ export class GameManager {
     };
   }
 
+  private accumulateReoStats(session: GameSession, state: GameState): void {
+    for (const ev of state.reoLog) {
+      switch (ev.t) {
+        case 'resolverBaza':
+          session.seriesStats[ev.ganador].bazasGanadas++;
+          session.seriesStats[ev.ganador].totalPuntos += ev.puntos;
+          break;
+        case 'cante':
+          if (ev.puntos === 20) session.seriesStats[ev.seat].cantes20++;
+          else session.seriesStats[ev.seat].cantes40++;
+          break;
+        case 'tute':
+          session.seriesStats[ev.seat].tutes++;
+          break;
+        case 'irADos':
+          session.seriesStats[ev.seat].vecesIrADos++;
+          break;
+        case 'monte':
+          for (const d of ev.deltas) {
+            session.seriesStats[d.seat].totalPuntos += d.puntos;
+          }
+          break;
+      }
+    }
+  }
+
   private async saveGameResult(session: GameSession, state: GameState): Promise<void> {
+    // Accumulate stats from the final REO
+    this.accumulateReoStats(session, state);
+
     const seats = [0, 1, 2, 3] as Seat[];
     const eliminados = state.eliminados ?? [];
+    const winners = seats.filter(s => !eliminados.includes(s) && state.piedras[s] > 0);
+    const losers = seats.filter(s => !winners.includes(s));
 
-    await prisma.game.create({
-      data: {
-        roomName: session.roomName,
-        piedrasCount: state.seriePiedrasIniciales,
-        players: {
-          create: seats.map(seat => ({
-            userId: session.seatToUserId[seat],
-            seat,
-            finalPiedras: state.piedras[seat],
-            isWinner: !eliminados.includes(seat) && state.piedras[seat] > 0,
-          })),
+    // Fetch current ELO for all players
+    const userIds = seats.map(s => session.seatToUserId[s]);
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, elo: true },
+    });
+    const eloMap: Record<string, number> = {};
+    for (const u of users) eloMap[u.id] = u.elo;
+
+    // Calculate new ELOs
+    const winnerAvgElo = winners.length > 0
+      ? winners.reduce<number>((sum, s) => sum + eloMap[session.seatToUserId[s]], 0) / winners.length
+      : 1000;
+    const loserAvgElo = losers.length > 0
+      ? losers.reduce<number>((sum, s) => sum + eloMap[session.seatToUserId[s]], 0) / losers.length
+      : 1000;
+
+    const newElos: Record<string, number> = {};
+    for (const s of winners) {
+      const uid = session.seatToUserId[s];
+      newElos[uid] = calculateElo(eloMap[uid], loserAvgElo, true);
+    }
+    for (const s of losers) {
+      const uid = session.seatToUserId[s];
+      newElos[uid] = calculateElo(eloMap[uid], winnerAvgElo, false);
+    }
+
+    // Save everything in a transaction
+    await prisma.$transaction(async (tx) => {
+      await tx.game.create({
+        data: {
+          roomName: session.roomName,
+          piedrasCount: state.seriePiedrasIniciales,
+          startedAt: session.startTime,
+          players: {
+            create: seats.map(seat => {
+              const uid = session.seatToUserId[seat];
+              const stats = session.seriesStats[seat];
+              return {
+                userId: uid,
+                seat,
+                finalPiedras: state.piedras[seat],
+                isWinner: winners.includes(seat),
+                totalPuntos: stats.totalPuntos,
+                bazasGanadas: stats.bazasGanadas,
+                cantes20: stats.cantes20,
+                cantes40: stats.cantes40,
+                tutes: stats.tutes,
+                vecesIrADos: stats.vecesIrADos,
+                eloBefore: eloMap[uid],
+                eloAfter: newElos[uid],
+              };
+            }),
+          },
         },
-      },
+      });
+
+      // Update each user's ELO (deduplicate in case of test scenarios)
+      const uniqueUserIds = [...new Set(userIds)];
+      for (const uid of uniqueUserIds) {
+        await tx.user.update({
+          where: { id: uid },
+          data: { elo: newElos[uid] },
+        });
+      }
     });
 
     console.log(`Partida guardada: sala=${session.roomId}, ganadores=${
-      seats.filter(s => !eliminados.includes(s) && state.piedras[s] > 0)
-        .map(s => session.playerNames[s]).join(', ')
+      winners.map(s => session.playerNames[s]).join(', ')
     }`);
   }
 

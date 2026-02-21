@@ -14,6 +14,7 @@ model User {
   password         String
   resetToken       String?      @unique
   resetTokenExpiry DateTime?
+  elo              Int          @default(1000)
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   gamePlayers      GamePlayer[]
@@ -25,6 +26,7 @@ model Game {
   id           String       @id @default(uuid())
   roomName     String
   piedrasCount Int
+  startedAt    DateTime     @default(now())
   completedAt  DateTime     @default(now())
   players      GamePlayer[]
 
@@ -38,6 +40,14 @@ model GamePlayer {
   seat         Int
   finalPiedras Int
   isWinner     Boolean
+  totalPuntos  Int     @default(0)
+  bazasGanadas Int     @default(0)
+  cantes20     Int     @default(0)
+  cantes40     Int     @default(0)
+  tutes        Int     @default(0)
+  vecesIrADos  Int     @default(0)
+  eloBefore    Int     @default(1000)
+  eloAfter     Int     @default(1000)
   game         Game    @relation(fields: [gameId], references: [id])
   user         User    @relation(fields: [userId], references: [id])
 

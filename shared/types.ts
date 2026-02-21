@@ -44,15 +44,27 @@ export interface RankingEntry {
   wins: number;
   gamesPlayed: number;
   winRate: number;
+  elo: number;
 }
 
 export interface GameHistoryEntry {
   id: string;
   roomName: string;
   piedrasCount: number;
+  startedAt: string;
   completedAt: string;
-  players: { username: string; isWinner: boolean; finalPiedras: number }[];
+  durationMinutes: number;
+  players: { username: string; isWinner: boolean; finalPiedras: number; totalPuntos: number; bazasGanadas: number }[];
   myResult: 'win' | 'loss';
+  myStats: {
+    totalPuntos: number;
+    bazasGanadas: number;
+    cantes20: number;
+    cantes40: number;
+    tutes: number;
+    vecesIrADos: number;
+    eloChange: number;
+  };
 }
 
 export interface PlayerStats {
@@ -62,6 +74,14 @@ export interface PlayerStats {
   winRate: number;
   currentStreak: number;
   bestStreak: number;
+  elo: number;
+  totalPuntos: number;
+  totalBazas: number;
+  totalCantes20: number;
+  totalCantes40: number;
+  totalTutes: number;
+  totalIrADos: number;
+  avgPuntosPerGame: number;
 }
 
 // ─── Socket.io / Multiplayer types ─────────────────────────

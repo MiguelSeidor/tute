@@ -232,8 +232,8 @@ export function LobbyScreen({ onBack }: { onBack: () => void }) {
                 onChange={e => setPiedras(parseInt(e.target.value) as 3 | 5)}
                 style={{ ...inputStyle, appearance: 'auto' }}
               >
-                <option value={3}>3 piedras (rápida)</option>
-                <option value={5}>5 piedras (estándar)</option>
+                <option value={3} style={{ background: '#2d5a27', color: '#fff' }}>3 piedras (rápida)</option>
+                <option value={5} style={{ background: '#2d5a27', color: '#fff' }}>5 piedras (estándar)</option>
               </select>
             </div>
             <div style={{ display: 'flex', gap: 10 }}>

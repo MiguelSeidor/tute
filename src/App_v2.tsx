@@ -788,6 +788,17 @@ export default function App_v2() {
           {lastActionBySeat[seat] || ""} {/* ✅ ahora seat es Seat, no any */}
         </div>
 
+        {seat === 0 && (
+          <div style={{
+            marginTop: 4, padding: '2px 10px', borderRadius: 999, display: 'inline-block',
+            fontSize: '0.75rem', fontWeight: 700,
+            visibility: game.turno === 0 && game.status === 'jugando' ? 'visible' : 'hidden',
+            background: 'rgba(255,220,60,0.2)', border: '1px solid rgba(255,220,60,0.4)', color: '#ffd740',
+          }}>
+            ⏳ Tu turno
+          </div>
+        )}
+
         {!hideHand && (
           <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap" }}>
             <HandRow
@@ -851,7 +862,7 @@ export default function App_v2() {
     if (isMe) {
       // === J1: solo cartas reales, gap responsive, auto-escala (como online) ===
       return (
-        <div ref={containerRef} className="handRow" style={{ overflow: "hidden", minHeight: "var(--card-h)" }}>
+        <div ref={containerRef} className={`handRow${game.turno === 0 && game.status === "jugando" ? ' playerBox--turn' : ''}`} style={{ overflow: "hidden", minHeight: "var(--card-h)" }}>
           <div style={{
             display: "flex", justifyContent: "center", flexWrap: "nowrap",
             gap: "clamp(2px, 1vw, 6px)",
@@ -1554,7 +1565,7 @@ export default function App_v2() {
             {/* MESA CENTRO */}
             <div style={{ gridColumn: "2", gridRow: "2", position: "relative" }}>
               <div
-                className={`mesaBox${anuncio ? ` anuncio-${anuncio.tipo === "cante" ? "activo" : anuncio.tipo}` : ""}`}
+                className={`mesaBox${anuncio ? ` anuncio-${anuncio.tipo === "cante" ? "activo" : anuncio.tipo}` : ""}${game.turno === 0 && game.status === "jugando" && !anuncio ? " mesa--myTurn" : ""}`}
                 style={{ position: "relative" }}
               >
                 <MesaVisual mesa={game.mesa} />

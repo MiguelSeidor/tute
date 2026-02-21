@@ -359,7 +359,7 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
             </div>
             {/* Mesa */}
             <div style={{ gridColumn: '2', gridRow: '2', position: 'relative' }}>
-              <div className={`mesaBox${anuncio ? ` anuncio-${anuncio.tipo === 'cante' ? 'activo' : anuncio.tipo}` : ''}${trickWinner !== null ? ' anuncio-activo' : ''}`} style={{ position: 'relative' }}>
+              <div className={`mesaBox${anuncio ? ` anuncio-${anuncio.tipo === 'cante' ? 'activo' : anuncio.tipo}` : ''}${trickWinner !== null ? ' anuncio-activo' : ''}${isMyTurn && !anuncio && trickWinner === null ? ' mesa--myTurn' : ''}`} style={{ position: 'relative' }}>
                 <MesaVisual mesa={rotateMesa(gs.mesa, mySeat)} />
                 {trickWinner !== null && (
                   <div className="anuncio-overlay cante" key={`baza-${gs.bazaN}`}>
@@ -469,7 +469,7 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
 
           {/* My hand — hidden during ceremony/dealing */}
           {!hideCards && (
-            <div className="og-hand-container" style={{ overflow: 'hidden', minHeight: 'var(--card-h)' }}>
+            <div className={`og-hand-container${isMyTurn ? ' playerBox--turn' : ''}`} style={{ overflow: 'hidden', minHeight: 'var(--card-h)' }}>
               <div ref={handRef} style={{
                 display: 'flex', justifyContent: 'center', flexWrap: 'nowrap',
                 gap: 'clamp(2px, 1vw, 6px)',

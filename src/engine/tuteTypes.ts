@@ -40,6 +40,7 @@ export type LogEvent =
   | { t: "tute"; seat: Seat; turno: number; kind: "reyes" | "caballos"; puntos: number }
   | { t: "resolverBaza"; turno: number; ganador: Seat; cartas: { seat: Seat; card: Card }[]; puntos: number }
   | { t: "tirarselas"; seat: Seat; turno: number }
+  | { t: "monte"; turno: number; deltas: { seat: Seat; puntos: number }[] }
   | { t: "piedras"; deltas: { seat: Seat; delta: number }[] }
   | { t: "finalizarReo"; perdedores: Seat[] }
   | { t: "finalizarSerie"; seatsCero: Seat[] };

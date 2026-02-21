@@ -468,8 +468,22 @@ function resolverBazaInner(state: GameState): GameState {
   };
 
   if (ultima) {
-    // 10 de monte
-    jugadores[ganador].puntos += 10;
+    // Monte: 10 puntos extra por última baza
+    let monteDeltas: { seat: Seat; puntos: number }[] = [];
+    if (state.irADos !== null && ganador !== state.irADos) {
+      // irADos: equipo gana última baza → 5 pts a cada miembro del equipo
+      const team = s1.activos.filter(s => s !== state.irADos) as Seat[];
+      for (const s of team) {
+        jugadores[s].puntos += 5;
+        monteDeltas.push({ seat: s, puntos: 5 });
+      }
+    } else {
+      // Normal o solo gana última baza → 10 pts al ganador
+      jugadores[ganador].puntos += 10;
+      monteDeltas.push({ seat: ganador, puntos: 10 });
+    }
+
+    s1 = { ...s1, reoLog: [...s1.reoLog, { t: "monte", turno: state.bazaN, deltas: monteDeltas } as const] };
 
     let perdedores: Seat[] = [];
 

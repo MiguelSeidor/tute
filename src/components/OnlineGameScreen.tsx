@@ -781,6 +781,10 @@ function ResumenModal({ gs, onReady }: { gs: GameStateView; onReady: () => void 
                   ganadorTurno = e.ganador;
                   acciones.push(`Gana ${gs.playerNames[e.ganador as Seat]} (+${e.puntos})`);
                 }
+                else if (e.t === 'monte') {
+                  const parts = e.deltas.map((d: any) => `${gs.playerNames[d.seat as Seat]} +${d.puntos}`);
+                  acciones.push(`Monte: ${parts.join(', ')}`);
+                }
               }
 
               return (

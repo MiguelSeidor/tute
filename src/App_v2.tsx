@@ -1146,6 +1146,9 @@ export default function App_v2() {
                   } else if (e.t === "resolverBaza") {
                     ganadorTurno = e.ganador;
                     acciones.push(`Gana J${e.ganador + 1} (+${e.puntos})`);
+                  } else if (e.t === "monte") {
+                    const parts = e.deltas.map((d: any) => `J${d.seat + 1} +${d.puntos}`);
+                    acciones.push(`Monte: ${parts.join(", ")}`);
                   }
                 }
 

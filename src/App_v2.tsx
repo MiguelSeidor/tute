@@ -11,7 +11,7 @@ import { GameError } from "./engine/tuteTypes";
 import { puedeJugar } from "./engine/tuteLogic";
 import Simulador4 from "./ui/Simulador4";
 import { useCeremonyPhase, useCeremony3Phase, PALO_ICONS, PALO_LABELS, DEAL_DIRECTION, getVisualSlot } from "./ui/DealerCeremony";
-import { generateCeremonyData, generateCeremony3Data, type CeremonyData, type Ceremony3Data, type AnyCeremonyData } from "./engine/ceremonySorteo";
+import { generateCeremonyData, generateCeremony3Data, type CeremonyData, type Ceremony3Data } from "./engine/ceremonySorteo";
 import { useAuth } from "./context/AuthContext";
 import { useSocket } from "./context/SocketContext";
 import { AuthForm } from "./components/AuthForm";
@@ -28,7 +28,7 @@ import "./ui/game.css";
 type GameMode = "offline" | "online" | "stats" | null;
 
 // Componente separado para el modo online (necesita useAuth y useSocket hooks)
-function OnlineScreen({ bodyStyle, onBack }: { bodyStyle: string; onBack: () => void }) {
+function OnlineScreen({ onBack }: { onBack: () => void }) {
   const { user, loading } = useAuth();
   const { currentRoom, gameState } = useSocket();
 
@@ -1377,7 +1377,7 @@ export default function App_v2() {
   }
 
   if (gameMode === "online") {
-    return <OnlineScreen bodyStyle={bodyStyle} onBack={() => setGameMode(null)} />;
+    return <OnlineScreen onBack={() => setGameMode(null)} />;
   }
 
   if (gameMode === "stats") {

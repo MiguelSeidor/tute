@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import type { Seat, Palo } from '../engine/tuteTypes';
+import { useState, useEffect, useRef } from 'react';
+import type { Seat, Palo, Card } from '../engine/tuteTypes';
+import type { Ceremony3Data } from '../engine/ceremonySorteo';
 
 export const CLOCKWISE: Seat[] = [0, 3, 2, 1];
 
@@ -130,6 +131,136 @@ export function useCeremonyPhase({ active, dealer, mySeat, onComplete }: UseCere
     phase: active ? phase : ('done' as CeremonyPhase),
     dealCards,
     showBadges,
+    dealerSlot,
+  };
+}
+
+// ─── 3-Player Ceremony ──────────────────────────────────
+
+export type Ceremony3Phase = 'text' | 'card_reveal' | 'tiebreak' | 'result' | 'dealing' | 'done';
+
+interface UseCeremony3PhaseOptions {
+  active: boolean;
+  data: Ceremony3Data | null;
+  activos: Seat[];      // seats that play (3 seats, excludes empty)
+  dealer: Seat;
+  mySeat?: Seat;
+  onComplete: () => void;
+}
+
+/**
+ * Hook for 3-player ceremony: each player draws a card, highest deals.
+ * Returns phase, the current round's drawn cards, and deal animation state.
+ */
+export function useCeremony3Phase({ active, data, activos, dealer, mySeat, onComplete }: UseCeremony3PhaseOptions) {
+  const [phase, setPhase] = useState<Ceremony3Phase>('text');
+  const [currentRound, setCurrentRound] = useState(0);
+  const [dealCards, setDealCards] = useState<DealCardAnim[]>([]);
+  const dealCardId = useRef(0);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
+  // Reset when ceremony becomes active
+  useEffect(() => {
+    if (active) {
+      setPhase('text');
+      setCurrentRound(0);
+      setDealCards([]);
+      dealCardId.current = 0;
+    }
+  }, [active]);
+
+  // Phase transitions
+  useEffect(() => {
+    if (!active || !data) return;
+
+    let delay: number;
+    let next: Ceremony3Phase;
+
+    if (phase === 'text') {
+      delay = 2500;
+      next = 'card_reveal';
+    } else if (phase === 'card_reveal') {
+      delay = 2500;
+      // If there are more rounds (tiebreaks), go to tiebreak phase
+      if (data.rounds.length > 1 && currentRound === 0) {
+        next = 'tiebreak';
+      } else {
+        next = 'result';
+      }
+    } else if (phase === 'tiebreak') {
+      delay = 2500;
+      const nextRound = currentRound + 1;
+      if (nextRound < data.rounds.length) {
+        // Show next tiebreak round
+        setCurrentRound(nextRound);
+        next = 'tiebreak'; // stay in tiebreak
+      } else {
+        next = 'result';
+      }
+    } else if (phase === 'result') {
+      delay = 1500;
+      next = 'dealing';
+    } else {
+      return; // dealing/done handled separately
+    }
+
+    const timer = setTimeout(() => setPhase(next), delay);
+    return () => clearTimeout(timer);
+  }, [active, phase, data, currentRound]);
+
+  // Stable ref for activos to avoid re-triggering dealing animation
+  const activosRef = useRef(activos);
+  activosRef.current = activos;
+
+  // Dealing animation (same as 4p but with activos)
+  useEffect(() => {
+    if (!active || phase !== 'dealing') return;
+
+    const dealActivos = activosRef.current.filter(s => s !== dealer);
+    const dealOrder: Seat[] = [];
+    for (let round = 0; round < 3; round++) {
+      for (const s of dealActivos) dealOrder.push(s);
+    }
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const interval = 250;
+
+    dealOrder.forEach((seat, i) => {
+      timers.push(setTimeout(() => {
+        const id = dealCardId.current++;
+        const targetSlot = getVisualSlot(seat, mySeat);
+        setDealCards(prev => [...prev, { id, targetSlot }]);
+        timers.push(setTimeout(() => {
+          setDealCards(prev => prev.filter(c => c.id !== id));
+        }, 600));
+      }, i * interval));
+    });
+
+    const totalTime = dealOrder.length * interval + 800;
+    timers.push(setTimeout(() => {
+      setPhase('done');
+      onCompleteRef.current();
+    }, totalTime));
+
+    return () => timers.forEach(t => clearTimeout(t));
+  }, [active, phase, dealer, mySeat]);
+
+  // Get drawn cards for current display round
+  const drawnCards: { seat: Seat; card: Card }[] =
+    data && phase === 'card_reveal' ? data.rounds[0] ?? [] :
+    data && phase === 'tiebreak' ? data.rounds[currentRound] ?? [] :
+    data && phase === 'result' ? data.rounds[data.rounds.length - 1] ?? [] :
+    [];
+
+  const dealerSlot = getVisualSlot(dealer, mySeat);
+
+  return {
+    phase: active ? phase : ('done' as Ceremony3Phase),
+    dealCards,
+    drawnCards,
+    currentRound,
+    totalRounds: data?.rounds.length ?? 1,
     dealerSlot,
   };
 }

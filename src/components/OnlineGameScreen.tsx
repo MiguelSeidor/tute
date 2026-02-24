@@ -5,7 +5,7 @@ import { Carta, MesaVisual } from '../ui/Primitives';
 import { puedeJugar } from '../engine/tuteLogic';
 import type { Card, Palo, Seat } from '../engine/tuteTypes';
 import type { GameStateView } from '@shared/types';
-import { useCeremonyPhase, PALO_ICONS, PALO_LABELS, DEAL_DIRECTION, getVisualSlot, CLOCKWISE } from '../ui/DealerCeremony';
+import { useCeremonyPhase, useCeremony3Phase, PALO_ICONS, PALO_LABELS, DEAL_DIRECTION, getVisualSlot, CLOCKWISE } from '../ui/DealerCeremony';
 import { FRASE_RIVAL_CANTE } from '../ui/gameConstants';
 import { ChatBar } from './ChatBar';
 import { useCardImagePreload } from '../hooks/useCardImagePreload';
@@ -85,13 +85,28 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
 
   // Hook MUST be called before any conditional return (React rules of hooks)
   const mySeat = gameState?.mySeat ?? (0 as Seat);
+  const cer4p = ceremonyData?.type === '4p' ? ceremonyData : null;
+  const cer3p = ceremonyData?.type === '3p' ? ceremonyData : null;
   const cerPhase = useCeremonyPhase({
-    active: !!ceremonyData,
-    dealer: ceremonyData?.dealer ?? (0 as Seat),
+    active: !!cer4p,
+    dealer: cer4p?.dealer ?? (0 as Seat),
     mySeat,
     onComplete: clearCeremony,
   });
-  const reoDealCards = useDealingAnimation(dealingDealer, mySeat, clearDealing);
+  const cer3pActivos = cer3p ? cer3p.rounds[0]?.map(r => r.seat) ?? [] : [];
+  const cer3Phase = useCeremony3Phase({
+    active: !!cer3p,
+    data: cer3p,
+    activos: cer3pActivos,
+    dealer: cer3p?.dealer ?? (0 as Seat),
+    mySeat,
+    onComplete: clearCeremony,
+  });
+  // Pass alive seats (non-eliminated) so dealing targets are correct even before new round state arrives
+  const onlineAliveSeats = gameState
+    ? ([0, 1, 2, 3] as Seat[]).filter(s => !(gameState.eliminados ?? []).includes(s))
+    : undefined;
+  const reoDealCards = useDealingAnimation(dealingDealer, mySeat, clearDealing, onlineAliveSeats);
 
   if (!gameState) {
     return (
@@ -316,17 +331,17 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
             gap: 'clamp(2px, 1vw, 8px)', alignItems: 'center', justifyItems: 'center',
           }}>
             {/* Dynamic ceremony slide animation */}
-            {ceremonyData && (() => {
+            {cer4p && (() => {
               const dir = DEAL_DIRECTION[cerPhase.dealerSlot];
               return <style>{`@keyframes cer-slide { 0% { transform: translate(-50%,-50%); opacity: 1; } 100% { transform: translate(calc(-50% + ${dir.x}), calc(-50% + ${dir.y})); opacity: 0.2; } }`}</style>;
             })()}
 
             {/* Top player */}
             <div style={{ gridColumn: '2', gridRow: '1', position: 'relative' }}>
-              {cerPhase.showBadges && ceremonyData && (() => {
+              {cerPhase.showBadges && cer4p && (() => {
                 const seat = visual.top;
-                const palo = ceremonyData.suitAssignments[seat];
-                const isDealer = (cerPhase.phase === 'card_slide' || cerPhase.phase === 'dealing') && ceremonyData.dealer === seat;
+                const palo = cer4p.suitAssignments[seat];
+                const isDealer = (cerPhase.phase === 'card_slide' || cerPhase.phase === 'dealing') && cer4p.dealer === seat;
                 return (
                   <div className={`cer-badge${isDealer ? ' is-dealer' : ''}`} style={{ animationDelay: '300ms', bottom: 'auto', top: 'calc(100% + 4px)' }}>
                     <div className="cer-badge-name">{gs.playerNames[seat]}</div>
@@ -334,17 +349,17 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
                   </div>
                 );
               })()}
-              <OnlinePlayerBox gs={gs} seat={visual.top} mySeat={mySeat} hideCards={hideCards} />
+              {gs.emptySeat !== visual.top && <OnlinePlayerBox gs={gs} seat={visual.top} mySeat={mySeat} hideCards={hideCards} />}
               {bocadillos[visual.top] && (
                 <div className="bocadillo bocadillo--above" key={bocadillos[visual.top]!.key}>{bocadillos[visual.top]!.texto}</div>
               )}
             </div>
             {/* Left player */}
             <div style={{ gridColumn: '1', gridRow: '2', position: 'relative', justifySelf: 'end' }}>
-              {cerPhase.showBadges && ceremonyData && (() => {
+              {cerPhase.showBadges && cer4p && (() => {
                 const seat = visual.left;
-                const palo = ceremonyData.suitAssignments[seat];
-                const isDealer = (cerPhase.phase === 'card_slide' || cerPhase.phase === 'dealing') && ceremonyData.dealer === seat;
+                const palo = cer4p.suitAssignments[seat];
+                const isDealer = (cerPhase.phase === 'card_slide' || cerPhase.phase === 'dealing') && cer4p.dealer === seat;
                 return (
                   <div className={`cer-badge${isDealer ? ' is-dealer' : ''}`} style={{ animationDelay: '150ms' }}>
                     <div className="cer-badge-name">{gs.playerNames[seat]}</div>
@@ -352,7 +367,7 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
                   </div>
                 );
               })()}
-              <OnlinePlayerBox gs={gs} seat={visual.left} mySeat={mySeat} hideCards={hideCards} />
+              {gs.emptySeat !== visual.left && <OnlinePlayerBox gs={gs} seat={visual.left} mySeat={mySeat} hideCards={hideCards} />}
               {bocadillos[visual.left] && (
                 <div className="bocadillo bocadillo--above" key={bocadillos[visual.left]!.key}>{bocadillos[visual.left]!.texto}</div>
               )}
@@ -373,29 +388,84 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
                 )}
               </div>
 
-              {/* Ceremony center elements */}
-              {ceremonyData && cerPhase.phase === 'text' && (
+              {/* Ceremony center elements — 4p */}
+              {cer4p && cerPhase.phase === 'text' && (
                 <div className="cer-title">¡A ver quién da!</div>
               )}
-              {ceremonyData && cerPhase.phase === 'card_reveal' && (
+              {cer4p && cerPhase.phase === 'card_reveal' && (
                 <div className="cer-card-center">
                   <img className="cer-card-img cer-card-reveal"
-                    src={`/cartas/${ceremonyData.card.palo}_${ceremonyData.card.num}.png`}
-                    alt={`${ceremonyData.card.num} de ${ceremonyData.card.palo}`} />
+                    src={`/cartas/${cer4p.card.palo}_${cer4p.card.num}.png`}
+                    alt={`${cer4p.card.num} de ${cer4p.card.palo}`} />
                 </div>
               )}
-              {ceremonyData && cerPhase.phase === 'card_slide' && (
+              {cer4p && cerPhase.phase === 'card_slide' && (
                 <div className="cer-card-center">
                   <img className="cer-card-img" style={{ animation: 'cer-slide 1.2s ease-in-out both' }}
-                    src={`/cartas/${ceremonyData.card.palo}_${ceremonyData.card.num}.png`}
-                    alt={`${ceremonyData.card.num} de ${ceremonyData.card.palo}`} />
-                  <div className="cer-dealer-label">¡{gs.playerNames[ceremonyData.dealer]} da!</div>
+                    src={`/cartas/${cer4p.card.palo}_${cer4p.card.num}.png`}
+                    alt={`${cer4p.card.num} de ${cer4p.card.palo}`} />
+                  <div className="cer-dealer-label">¡{gs.playerNames[cer4p.dealer]} da!</div>
                 </div>
               )}
-              {ceremonyData && cerPhase.phase === 'dealing' && (
+              {cer4p && cerPhase.phase === 'dealing' && (
                 <>
                   {cerPhase.dealCards.map(dc => {
                     const dealerDir = DEAL_DIRECTION[cerPhase.dealerSlot];
+                    const targetDir = DEAL_DIRECTION[dc.targetSlot];
+                    return (
+                      <img key={dc.id} className="cer-deal-card" src="/cartas/dorso.png" alt="carta"
+                        style={{
+                          '--deal-ox': dealerDir.x,
+                          '--deal-oy': dealerDir.y,
+                          '--deal-tx': targetDir.x,
+                          '--deal-ty': targetDir.y,
+                        } as React.CSSProperties} />
+                    );
+                  })}
+                </>
+              )}
+              {/* Ceremony center elements — 3p */}
+              {cer3p && cer3Phase.phase === 'text' && (
+                <div className="cer-title">¡A ver quién da!</div>
+              )}
+              {cer3p && (cer3Phase.phase === 'card_reveal' || cer3Phase.phase === 'tiebreak' || cer3Phase.phase === 'result') && (
+                <div style={{
+                  position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)',
+                  display: 'flex', gap: 'clamp(8px, 2vw, 16px)', zIndex: 99999,
+                  animation: 'cer-fade-in 400ms ease-out both',
+                }}>
+                  {cer3Phase.drawnCards.map(({ seat, card }) => {
+                    const isDealer = cer3Phase.phase === 'result' && cer3p!.dealer === seat;
+                    return (
+                      <div key={seat} style={{
+                        textAlign: 'center',
+                        padding: 'clamp(4px, 1vw, 8px)',
+                        borderRadius: 8,
+                        background: isDealer ? 'rgba(80, 60, 0, 0.95)' : 'rgba(0, 0, 0, 0.85)',
+                        border: isDealer ? '2px solid #ffd700' : '2px solid rgba(255,255,255,0.3)',
+                        boxShadow: isDealer ? '0 0 16px rgba(255, 215, 0, 0.6)' : 'none',
+                      }}>
+                        <div style={{ fontSize: 'clamp(9px, 2vw, 13px)', opacity: 0.8, color: '#fff', marginBottom: 2 }}>{gs.playerNames[seat]}</div>
+                        <img src={`/cartas/${card.palo}_${card.num}.png`} alt="" style={{ width: 'clamp(32px, 8vw, 50px)', height: 'auto' }} />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {cer3p && cer3Phase.phase === 'tiebreak' && (
+                <div className="cer-title" style={{ fontSize: 'clamp(0.8rem, 3vw, 1.1rem)', top: 'calc(50% - clamp(50px, 12vw, 80px))' }}>
+                  ¡Empate! Ronda {cer3Phase.currentRound + 1}
+                </div>
+              )}
+              {cer3p && cer3Phase.phase === 'result' && (
+                <div className="cer-dealer-label" style={{ position: 'absolute', left: '50%', top: 'calc(50% + clamp(40px, 10vw, 65px))', transform: 'translate(-50%, 0)' }}>
+                  ¡{gs.playerNames[cer3p.dealer]} da!
+                </div>
+              )}
+              {cer3p && cer3Phase.phase === 'dealing' && (
+                <>
+                  {cer3Phase.dealCards.map(dc => {
+                    const dealerDir = DEAL_DIRECTION[cer3Phase.dealerSlot];
                     const targetDir = DEAL_DIRECTION[dc.targetSlot];
                     return (
                       <img key={dc.id} className="cer-deal-card" src="/cartas/dorso.png" alt="carta"
@@ -431,10 +501,10 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
             </div>
             {/* Right player */}
             <div style={{ gridColumn: '3', gridRow: '2', position: 'relative', justifySelf: 'start' }}>
-              {cerPhase.showBadges && ceremonyData && (() => {
+              {cerPhase.showBadges && cer4p && (() => {
                 const seat = visual.right;
-                const palo = ceremonyData.suitAssignments[seat];
-                const isDealer = (cerPhase.phase === 'card_slide' || cerPhase.phase === 'dealing') && ceremonyData.dealer === seat;
+                const palo = cer4p.suitAssignments[seat];
+                const isDealer = (cerPhase.phase === 'card_slide' || cerPhase.phase === 'dealing') && cer4p.dealer === seat;
                 return (
                   <div className={`cer-badge${isDealer ? ' is-dealer' : ''}`} style={{ animationDelay: '450ms' }}>
                     <div className="cer-badge-name">{gs.playerNames[seat]}</div>
@@ -442,17 +512,17 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
                   </div>
                 );
               })()}
-              <OnlinePlayerBox gs={gs} seat={visual.right} mySeat={mySeat} hideCards={hideCards} />
+              {gs.emptySeat !== visual.right && <OnlinePlayerBox gs={gs} seat={visual.right} mySeat={mySeat} hideCards={hideCards} />}
               {bocadillos[visual.right] && (
                 <div className="bocadillo bocadillo--above" key={bocadillos[visual.right]!.key}>{bocadillos[visual.right]!.texto}</div>
               )}
             </div>
             {/* Bottom player (me) */}
             <div style={{ gridColumn: '2', gridRow: '3', position: 'relative' }}>
-              {cerPhase.showBadges && ceremonyData && (() => {
+              {cerPhase.showBadges && cer4p && (() => {
                 const seat = visual.bottom;
-                const palo = ceremonyData.suitAssignments[seat];
-                const isDealer = (cerPhase.phase === 'card_slide' || cerPhase.phase === 'dealing') && ceremonyData.dealer === seat;
+                const palo = cer4p.suitAssignments[seat];
+                const isDealer = (cerPhase.phase === 'card_slide' || cerPhase.phase === 'dealing') && cer4p.dealer === seat;
                 return (
                   <div className={`cer-badge${isDealer ? ' is-dealer' : ''}`}>
                     <div className="cer-badge-name">{gs.playerNames[seat]}</div>
@@ -554,7 +624,10 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
       {gs.status === 'resumen' && <ResumenModal gs={gs} onReady={setResumenReady} />}
 
       {/* Ceremony backdrop */}
-      {ceremonyData && cerPhase.phase !== 'done' && (
+      {cer4p && cerPhase.phase !== 'done' && (
+        <div className="cer-backdrop" />
+      )}
+      {cer3p && cer3Phase.phase !== 'done' && (
         <div className="cer-backdrop" />
       )}
 
@@ -724,6 +797,9 @@ function BazasModal({ gs, mySeat, onClose }: { gs: GameStateView; mySeat: Seat; 
 function ResumenModal({ gs, onReady }: { gs: GameStateView; onReady: () => void }) {
   const activeSeats = new Set<number>(gs.activos);
   const eliminados = gs.eliminados ?? [];
+  // For 3p games, the empty seat should never appear in the table
+  const initialEliminated = gs.emptySeat !== null ? [gs.emptySeat] : [];
+  const displaySeats = ([0, 1, 2, 3] as Seat[]).filter(s => !initialEliminated.includes(s));
   const relevantSeats = ([0, 1, 2, 3] as Seat[]).filter(s => !eliminados.includes(s));
   const readySet = new Set(gs.resumenReady);
   const iAmReady = readySet.has(gs.mySeat);
@@ -756,7 +832,7 @@ function ResumenModal({ gs, onReady }: { gs: GameStateView; onReady: () => void 
             <tr>
               <th>#</th>
               <th>Acciones</th>
-              {([0, 1, 2, 3] as Seat[]).map(s => (
+              {displaySeats.map(s => (
                 <th key={s}>{gs.playerNames[s]}</th>
               ))}
             </tr>
@@ -791,7 +867,7 @@ function ResumenModal({ gs, onReady }: { gs: GameStateView; onReady: () => void 
                 <tr key={t}>
                   <td>{t === -1 ? 'Ini' : t + 1}</td>
                   <td>{acciones.join(' | ')}</td>
-                  {([0, 1, 2, 3] as Seat[]).map(s => (
+                  {displaySeats.map(s => (
                     <td key={s} style={{
                       background: ganadorTurno === s ? 'rgba(0,200,120,0.35)' :
                         gs.perdedores.includes(s) ? 'rgba(255,0,0,0.35)' : 'transparent',
@@ -805,7 +881,7 @@ function ResumenModal({ gs, onReady }: { gs: GameStateView; onReady: () => void 
             <tr style={{ fontWeight: 700, borderTop: '2px solid #fff' }}>
               <td></td>
               <td>Total</td>
-              {([0, 1, 2, 3] as Seat[]).map(s => (
+              {displaySeats.map(s => (
                 <td key={s} style={{
                   background: gs.perdedores.includes(s) ? 'rgba(255,0,0,0.35)' : 'transparent',
                 }}>{gs.puntos[s]} pts</td>

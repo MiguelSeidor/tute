@@ -5,22 +5,30 @@ import { ordenarMano } from "./tuteReducer";
 // Estado inicial (serie): 4 asientos, piedras = 5, dealer 0 (por ejemplo)
 export function initGame(
   piedrasIniciales = 5,
-  dealer: Seat = 0
+  dealer: Seat = 0,
+  numPlayers: 3 | 4 = 4,
+  emptySeat?: Seat, // seat vacío para partidas de 3 jugadores
 ): GameState {
+  const eliminados: Seat[] = [];
   const jugadores: Record<Seat, PlayerInfo> = {
     0: mkPlayerInfo(piedrasIniciales),
     1: mkPlayerInfo(piedrasIniciales),
     2: mkPlayerInfo(piedrasIniciales),
     3: mkPlayerInfo(piedrasIniciales),
   };
-
-  // ➕ piedras fuera de PlayerInfo (más claro para la serie)
   const piedras: Record<Seat, number> = {
     0: piedrasIniciales,
     1: piedrasIniciales,
     2: piedrasIniciales,
     3: piedrasIniciales,
   };
+
+  // Para 3 jugadores: marcar el seat vacío como eliminado con 0 piedras
+  if (numPlayers === 3 && emptySeat !== undefined) {
+    eliminados.push(emptySeat);
+    piedras[emptySeat] = 0;
+    jugadores[emptySeat].piedras = 0;
+  }
 
   return {
     status: "inicial",
@@ -38,11 +46,13 @@ export function initGame(
     salidorInicialSerie: ((dealer + 1) % 4) as Seat,
     bazasPorJugador: { 0: [], 1: [], 2: [], 3: [] },
     piedras,
+    numPlayers,
+    emptySeat: numPlayers === 3 && emptySeat !== undefined ? emptySeat : null,
     seriePiedrasIniciales: piedrasIniciales,
     serieTerminada: false,
-    eliminados: [],
-    ultimoGanadorBaza: null,                                     
-    cantesCantados: {                                            
+    eliminados,
+    ultimoGanadorBaza: null,
+    cantesCantados: {
       0: { oros:false, copas:false, espadas:false, bastos:false },
       1: { oros:false, copas:false, espadas:false, bastos:false },
       2: { oros:false, copas:false, espadas:false, bastos:false },

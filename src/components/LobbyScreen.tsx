@@ -12,6 +12,7 @@ export function LobbyScreen({ onBack }: { onBack: () => void }) {
   const [showCreate, setShowCreate] = useState(false);
   const [roomName, setRoomName] = useState('');
   const [piedras, setPiedras] = useState<3 | 5>(5);
+  const [maxPlayers, setMaxPlayers] = useState<3 | 4>(4);
   const [error, setError] = useState('');
 
   // On mount, check if user has an active room to rejoin
@@ -33,7 +34,7 @@ export function LobbyScreen({ onBack }: { onBack: () => void }) {
   if (currentRoom) {
     const isHost = currentRoom.hostUserId === user?.id;
     const me = currentRoom.players.find(p => p.userId === user?.id);
-    const allReady = currentRoom.players.length === 4 && currentRoom.players.every(p => p.ready);
+    const allReady = currentRoom.players.length === currentRoom.maxPlayers && currentRoom.players.every(p => p.ready);
 
     return (
       <div className="mode-screen" style={{ gap: 0 }}>
@@ -55,13 +56,13 @@ export function LobbyScreen({ onBack }: { onBack: () => void }) {
             {currentRoom.name}
           </h1>
           <p style={{ opacity: 0.7, margin: '0 0 20px', textAlign: 'center', fontSize: '0.9rem' }}>
-            {currentRoom.piedras} piedras &middot; {currentRoom.players.length}/4 jugadores
+            {currentRoom.piedras} piedras &middot; {currentRoom.players.length}/{currentRoom.maxPlayers} jugadores
           </p>
 
           {/* Player seats */}
           <style>{`@media (max-width: 500px) { .lobby-seats { grid-template-columns: 1fr !important; } }`}</style>
           <div className="lobby-seats" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
-            {([0, 1, 2, 3] as const).map(seat => {
+            {Array.from({ length: currentRoom.maxPlayers }, (_, i) => i).map(seat => {
               const player = currentRoom.players.find(p => p.seat === seat);
               const isMe = player?.userId === user?.id;
               const isRoomHost = player?.userId === currentRoom.hostUserId;
@@ -226,6 +227,17 @@ export function LobbyScreen({ onBack }: { onBack: () => void }) {
               />
             </div>
             <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontSize: '0.9rem' }}>Jugadores</label>
+              <select
+                value={maxPlayers}
+                onChange={e => setMaxPlayers(parseInt(e.target.value) as 3 | 4)}
+                style={{ ...inputStyle, appearance: 'auto' }}
+              >
+                <option value={4} style={{ background: '#2d5a27', color: '#fff' }}>4 jugadores</option>
+                <option value={3} style={{ background: '#2d5a27', color: '#fff' }}>3 jugadores</option>
+              </select>
+            </div>
+            <div style={{ marginBottom: 12 }}>
               <label style={{ display: 'block', marginBottom: 6, fontSize: '0.9rem' }}>Piedras</label>
               <select
                 value={piedras}
@@ -243,7 +255,7 @@ export function LobbyScreen({ onBack }: { onBack: () => void }) {
                   if (!roomName.trim()) return;
                   try {
                     setError('');
-                    await createRoom(roomName.trim(), piedras);
+                    await createRoom(roomName.trim(), piedras, maxPlayers);
                     setShowCreate(false);
                     setRoomName('');
                   } catch (e: any) { setError(e.message); }
@@ -298,7 +310,7 @@ export function LobbyScreen({ onBack }: { onBack: () => void }) {
                   <div>
                     <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>{room.name}</div>
                     <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>
-                      {room.hostUsername} &middot; {room.playerCount}/4 &middot; {room.piedras}p
+                      {room.hostUsername} &middot; {room.playerCount}/{room.maxPlayers} &middot; {room.piedras}p
                     </div>
                   </div>
                   <button
@@ -306,10 +318,10 @@ export function LobbyScreen({ onBack }: { onBack: () => void }) {
                     onClick={async () => {
                       try { setError(''); await joinRoom(room.id); } catch (e: any) { setError(e.message); }
                     }}
-                    disabled={room.playerCount >= 4}
+                    disabled={room.playerCount >= room.maxPlayers}
                     style={{
                       padding: '8px 16px', fontSize: '0.85rem',
-                      opacity: room.playerCount >= 4 ? 0.4 : 1,
+                      opacity: room.playerCount >= room.maxPlayers ? 0.4 : 1,
                     }}
                   >
                     Unirse

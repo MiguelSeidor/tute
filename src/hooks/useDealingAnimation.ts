@@ -1,17 +1,20 @@
 import { useState, useRef, useEffect } from "react";
 import type { Seat } from "../engine/tuteTypes";
-import { getVisualSlot, CLOCKWISE } from "../ui/DealerCeremony";
+import { getVisualSlot } from "../ui/DealerCeremony";
 import type { DealCardAnim } from "../ui/DealerCeremony";
 
 export function useDealingAnimation(
   trigger: Seat | null,
   mySeat: Seat,
-  onComplete: () => void
+  onComplete: () => void,
+  activos?: Seat[]
 ): DealCardAnim[] {
   const [reoDealCards, setReoDealCards] = useState<DealCardAnim[]>([]);
   const cardIdRef = useRef(0);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
+  const activosRef = useRef(activos);
+  activosRef.current = activos;
 
   useEffect(() => {
     if (trigger === null) {
@@ -20,10 +23,17 @@ export function useDealingAnimation(
     }
 
     const dealer = trigger;
-    const activos = CLOCKWISE.filter(s => s !== dealer);
+    // Deal only to active players (excluding the dealer)
+    const targets = activosRef.current
+      ? activosRef.current.filter(s => s !== dealer)
+      : [];
+    if (targets.length === 0) {
+      onCompleteRef.current();
+      return;
+    }
     const dealOrder: Seat[] = [];
     for (let round = 0; round < 3; round++) {
-      for (const s of activos) dealOrder.push(s);
+      for (const s of targets) dealOrder.push(s);
     }
 
     const timers: ReturnType<typeof setTimeout>[] = [];

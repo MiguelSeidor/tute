@@ -361,15 +361,21 @@ export function dispatch(state: GameState, event: GameEvent): GameState {
       const piedrasInicial = event.piedras ?? state.seriePiedrasIniciales ?? 5;
       const piedras: Record<Seat, number> = { 0: piedrasInicial, 1: piedrasInicial, 2: piedrasInicial, 3: piedrasInicial };
 
-      // Limpieza de estado de REO/serie sin tocar dealer (o reseteándolo si quisieras)
+      // Para 3 jugadores: el seat vacío se mantiene eliminado con 0 piedras
+      const eliminados: Seat[] = [];
+      if (state.emptySeat !== null) {
+        eliminados.push(state.emptySeat);
+        piedras[state.emptySeat] = 0;
+      }
+
       return {
         ...state,
-        status: "inicial",                 // vuelve a "inicial"
+        status: "inicial",
         jugadores: {
-          0: { ...state.jugadores[0], mano: [], puntos: 0, fallos: { oros:false,copas:false,espadas:false,bastos:false }, haJugadoAlMenosUna: false },
-          1: { ...state.jugadores[1], mano: [], puntos: 0, fallos: { oros:false,copas:false,espadas:false,bastos:false }, haJugadoAlMenosUna: false },
-          2: { ...state.jugadores[2], mano: [], puntos: 0, fallos: { oros:false,copas:false,espadas:false,bastos:false }, haJugadoAlMenosUna: false },
-          3: { ...state.jugadores[3], mano: [], puntos: 0, fallos: { oros:false,copas:false,espadas:false,bastos:false }, haJugadoAlMenosUna: false },
+          0: { ...state.jugadores[0], mano: [], puntos: 0, piedras: piedras[0], fallos: { oros:false,copas:false,espadas:false,bastos:false }, haJugadoAlMenosUna: false },
+          1: { ...state.jugadores[1], mano: [], puntos: 0, piedras: piedras[1], fallos: { oros:false,copas:false,espadas:false,bastos:false }, haJugadoAlMenosUna: false },
+          2: { ...state.jugadores[2], mano: [], puntos: 0, piedras: piedras[2], fallos: { oros:false,copas:false,espadas:false,bastos:false }, haJugadoAlMenosUna: false },
+          3: { ...state.jugadores[3], mano: [], puntos: 0, piedras: piedras[3], fallos: { oros:false,copas:false,espadas:false,bastos:false }, haJugadoAlMenosUna: false },
         },
         activos: [],
         turno: state.dealer,
@@ -380,11 +386,11 @@ export function dispatch(state: GameState, event: GameEvent): GameState {
         bazasPorJugador: { 0: [], 1: [], 2: [], 3: [] },
         perdedores: [],
         irADos: null,
-        piedras,                           // ⬅️ piedras reset
-        seriePiedrasIniciales: piedrasInicial, // ⬅️ actualizar por si cambió
-        serieTerminada: false,             // ⬅️ limpiar flag
-        eliminados: [],                    // ⬅️ nadie eliminado en nueva serie
-        reoLog: [],                        // ⬅️ nueva serie, nuevo log
+        piedras,
+        seriePiedrasIniciales: piedrasInicial,
+        serieTerminada: false,
+        eliminados,
+        reoLog: [],
       };
     }
 
@@ -453,7 +459,7 @@ function resolverBazaInner(state: GameState): GameState {
   const logEntry = { t: "resolverBaza", turno: state.bazaN, ganador, cartas: state.mesa, puntos } as const;
 
   const bazaN = state.bazaN + 1;
-  const ultima = bazaN === 9; // 9 bazas en juego a 3 jugadores activos
+  const ultima = bazaN === 3 * state.activos.length; // 9 bazas con 3 activos
 
   let s1: GameState = {
     ...state,

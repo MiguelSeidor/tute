@@ -5,7 +5,7 @@ export class RoomManager {
   private rooms = new Map<string, Room>();
   private userToRoom = new Map<string, string>();
 
-  createRoom(userId: string, username: string, name: string, piedras: 3 | 5): Room {
+  createRoom(userId: string, username: string, name: string, piedras: 3 | 5, maxPlayers: 3 | 4 = 4): Room {
     if (this.userToRoom.has(userId)) {
       throw new Error('Ya estás en una sala');
     }
@@ -25,6 +25,7 @@ export class RoomManager {
       name,
       hostUserId: userId,
       piedras,
+      maxPlayers,
       players: [player],
       status: 'waiting',
       createdAt: Date.now(),
@@ -39,7 +40,7 @@ export class RoomManager {
     const room = this.rooms.get(roomId);
     if (!room) throw new Error('Sala no encontrada');
     if (room.status !== 'waiting') throw new Error('La partida ya ha comenzado');
-    if (room.players.length >= 4) throw new Error('Sala llena');
+    if (room.players.length >= room.maxPlayers) throw new Error('Sala llena');
     if (room.players.some(p => p.userId === userId)) throw new Error('Ya estás en esta sala');
 
     const existing = this.userToRoom.get(userId);
@@ -107,7 +108,7 @@ export class RoomManager {
     const room = this.rooms.get(roomId);
     if (!room) return { ok: false, reason: 'Sala no encontrada' };
     if (room.status !== 'waiting') return { ok: false, reason: 'La partida ya comenzó' };
-    if (room.players.length !== 4) return { ok: false, reason: `Se necesitan 4 jugadores (hay ${room.players.length})` };
+    if (room.players.length !== room.maxPlayers) return { ok: false, reason: `Se necesitan ${room.maxPlayers} jugadores (hay ${room.players.length})` };
     if (!room.players.every(p => p.ready)) return { ok: false, reason: 'Todos deben estar listos' };
     return { ok: true };
   }
@@ -145,7 +146,7 @@ export class RoomManager {
         name: r.name,
         hostUsername: r.players.find(p => p.userId === r.hostUserId)?.username || '?',
         playerCount: r.players.length,
-        maxPlayers: 4 as const,
+        maxPlayers: r.maxPlayers,
         status: r.status,
         piedras: r.piedras,
       }));

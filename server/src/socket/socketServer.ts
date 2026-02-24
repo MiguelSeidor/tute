@@ -104,7 +104,7 @@ export function setupSocketServer(httpServer: HttpServer) {
           cb({ success: false, error: 'Nombre de sala inválido (1-50 caracteres)' });
           return;
         }
-        const room = roomManager.createRoom(socket.userId, socket.username, data.name.trim(), data.piedras);
+        const room = roomManager.createRoom(socket.userId, socket.username, data.name.trim(), data.piedras, data.maxPlayers ?? 4);
         socket.join(room.id);
         cb({ success: true, roomId: room.id });
         io.to(room.id).emit('room:updated', room);

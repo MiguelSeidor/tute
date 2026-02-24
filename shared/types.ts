@@ -103,6 +103,7 @@ export interface Room {
   name: string;
   hostUserId: string;
   piedras: 3 | 5;
+  maxPlayers: 3 | 4;
   players: RoomPlayer[];
   status: 'waiting' | 'playing' | 'finished';
   createdAt: number;
@@ -113,7 +114,7 @@ export interface RoomListItem {
   name: string;
   hostUsername: string;
   playerCount: number;
-  maxPlayers: 4;
+  maxPlayers: 3 | 4;
   status: Room['status'];
   piedras: 3 | 5;
 }
@@ -157,11 +158,16 @@ export interface GameStateView {
 
   // Seats that have marked "ready" to close the resumen modal
   resumenReady: Seat[];
+
+  // 3p vs 4p
+  numPlayers: 3 | 4;
+  emptySeat: Seat | null;
 }
 
 export interface CreateRoomRequest {
   name: string;
   piedras: 3 | 5;
+  maxPlayers?: 3 | 4;
 }
 
 export interface GameActionRequest {

@@ -68,6 +68,8 @@ export interface GameState {
   bazasPorJugador: Record<Seat, Card[][]>; // ⬅️ cada entry es una baza (array de 3 Card)
   piedras: Record<Seat, number>;
 
+  numPlayers: 3 | 4;                // cuántos jugadores empezaron la serie
+  emptySeat: Seat | null;           // seat vacío en partida de 3 jugadores (null si 4p)
   seriePiedrasIniciales: number;    // cuántas piedras tenía cada jugador al empezar la serie (ej. 5)
   serieTerminada: boolean;          // true si 2+ seats llegan a 0 y se cierra la serie
   eliminados: Seat[];               // seats eliminados (0 piedras en un REO anterior)

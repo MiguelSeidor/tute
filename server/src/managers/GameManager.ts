@@ -2,25 +2,10 @@ import type { GameState, GameEvent, Seat, GameStateView, Room, Palo } from '@sha
 import { initGame } from '@engine/tuteInit';
 import { dispatch } from '@engine/tuteReducer';
 import { PALOS, CARTAS } from '@engine/tuteTypes';
+import { generateCeremonyData, generateCeremony3Data, type AnyCeremonyData } from '@engine/ceremonySorteo';
 import { prisma } from '../db/client.js';
 
 const CLOCKWISE: Seat[] = [0, 3, 2, 1];
-
-export interface CeremonyData {
-  suitAssignments: Record<Seat, Palo>;
-  card: { palo: Palo; num: typeof CARTAS[number] };
-  dealer: Seat;
-}
-
-function generateCeremonyData(): CeremonyData {
-  const shuffled = [...PALOS].sort(() => Math.random() - 0.5);
-  const suitAssignments = { 0: shuffled[0], 1: shuffled[1], 2: shuffled[2], 3: shuffled[3] } as Record<Seat, Palo>;
-  const palo = PALOS[Math.floor(Math.random() * PALOS.length)];
-  const num = CARTAS[Math.floor(Math.random() * CARTAS.length)];
-  const card = { palo, num };
-  const dealerEntry = Object.entries(suitAssignments).find(([, p]) => p === card.palo)!;
-  return { suitAssignments, card, dealer: Number(dealerEntry[0]) as Seat };
-}
 
 interface PlayerSeriesStats {
   totalPuntos: number;
@@ -63,27 +48,56 @@ interface GameSession {
 export class GameManager {
   private games = new Map<string, GameSession>();
 
-  createGame(room: Room): { state: GameState; ceremony: CeremonyData } {
-    if (room.players.length !== 4) {
-      throw new Error('Se necesitan exactamente 4 jugadores');
+  createGame(room: Room): { state: GameState; ceremony: AnyCeremonyData } {
+    const maxPlayers = room.maxPlayers ?? 4;
+
+    if (room.players.length !== maxPlayers) {
+      throw new Error(`Se necesitan exactamente ${maxPlayers} jugadores`);
     }
-
-    const ceremony = generateCeremonyData();
-    let state = initGame(room.piedras, ceremony.dealer);
-
-    // Start first round
-    state = dispatch(state, { type: 'startRound' });
 
     const seatToUserId = {} as Record<Seat, string>;
     const userIdToSeat = new Map<string, Seat>();
     const playerNames = {} as Record<Seat, string>;
 
-    for (const p of room.players) {
-      const seat = p.seat as Seat;
-      seatToUserId[seat] = p.userId;
-      userIdToSeat.set(p.userId, seat);
-      playerNames[seat] = p.username;
+    let ceremony: AnyCeremonyData;
+    let emptySeat: Seat | undefined;
+
+    if (maxPlayers === 3) {
+      // Shuffle seats: assign 3 players to 3 random seats out of [0,1,2,3]
+      const allSeats = ([0, 1, 2, 3] as Seat[]).sort(() => Math.random() - 0.5);
+      const playerSeats = allSeats.slice(0, 3);
+      emptySeat = allSeats[3];
+
+      for (let i = 0; i < room.players.length; i++) {
+        const p = room.players[i];
+        const seat = playerSeats[i];
+        seatToUserId[seat] = p.userId;
+        userIdToSeat.set(p.userId, seat);
+        playerNames[seat] = p.username;
+      }
+      // Fill empty seat placeholder
+      seatToUserId[emptySeat] = '';
+      playerNames[emptySeat] = '';
+
+      const c3 = generateCeremony3Data(playerSeats);
+      ceremony = { type: '3p', ...c3 };
+    } else {
+      for (const p of room.players) {
+        const seat = p.seat as Seat;
+        seatToUserId[seat] = p.userId;
+        userIdToSeat.set(p.userId, seat);
+        playerNames[seat] = p.username;
+      }
+
+      const c4 = generateCeremonyData();
+      ceremony = { type: '4p', ...c4 };
     }
+
+    const dealer = ceremony.dealer;
+    let state = initGame(room.piedras, dealer, maxPlayers, emptySeat);
+
+    // Start first round
+    state = dispatch(state, { type: 'startRound' });
 
     const session: GameSession = {
       roomId: room.id, roomName: room.name, state, seatToUserId, userIdToSeat, playerNames,
@@ -194,12 +208,21 @@ export class GameManager {
 
     // Auto-start next round after finalizarReo (if series not over)
     if (event.type === 'finalizarReo' && !newState.serieTerminada) {
-      // Rotate dealer clockwise, skipping eliminated
+      // Advance salidor clockwise (skipping eliminated), then dealer = alive player just before salidor
       const eliminados = newState.eliminados ?? [];
-      const dealerIdx = CLOCKWISE.indexOf(newState.dealer);
-      let nextDealer = newState.dealer;
+      const salidorIdx = CLOCKWISE.indexOf(newState.salidor);
+      let nextSalidor = newState.salidor;
       for (let i = 1; i <= 4; i++) {
-        const candidate = CLOCKWISE[(dealerIdx + i) % CLOCKWISE.length];
+        const candidate = CLOCKWISE[(salidorIdx + i) % CLOCKWISE.length];
+        if (!eliminados.includes(candidate)) {
+          nextSalidor = candidate;
+          break;
+        }
+      }
+      const nextSalidorIdx = CLOCKWISE.indexOf(nextSalidor);
+      let nextDealer = nextSalidor;
+      for (let i = 1; i <= 4; i++) {
+        const candidate = CLOCKWISE[(nextSalidorIdx - i + 4) % CLOCKWISE.length];
         if (!eliminados.includes(candidate)) {
           nextDealer = candidate;
           break;
@@ -219,7 +242,9 @@ export class GameManager {
       session.resultSaved = false;
       session.startTime = new Date();
       session.seriesStats = { 0: emptyStats(), 1: emptyStats(), 2: emptyStats(), 3: emptyStats() } as Record<Seat, PlayerSeriesStats>;
-      const randDealer = CLOCKWISE[Math.floor(Math.random() * 4)];
+      // Pick random dealer from alive seats only
+      const aliveSeats = CLOCKWISE.filter(s => !(newState.eliminados ?? []).includes(s));
+      const randDealer = aliveSeats[Math.floor(Math.random() * aliveSeats.length)];
       newState = dispatch(newState, { type: 'startRound', dealer: randDealer });
       session.state = newState;
 
@@ -342,6 +367,8 @@ export class GameManager {
       playerNames,
       playerConnected,
       resumenReady: [...session.resumenReady],
+      numPlayers: state.numPlayers,
+      emptySeat: state.emptySeat,
     };
   }
 
@@ -375,13 +402,15 @@ export class GameManager {
     // Accumulate stats from the final REO
     this.accumulateReoStats(session, state);
 
-    const seats = [0, 1, 2, 3] as Seat[];
+    // Only consider seats with real players (skip empty seat in 3p)
+    const allSeats = [0, 1, 2, 3] as Seat[];
+    const realSeats = allSeats.filter(s => session.seatToUserId[s] !== '');
     const eliminados = state.eliminados ?? [];
-    const winners = seats.filter(s => !eliminados.includes(s) && state.piedras[s] > 0);
-    const losers = seats.filter(s => !winners.includes(s));
+    const winners = realSeats.filter(s => !eliminados.includes(s) && state.piedras[s] > 0);
+    const losers = realSeats.filter(s => !winners.includes(s));
 
-    // Fetch current ELO for all players
-    const userIds = seats.map(s => session.seatToUserId[s]);
+    // Fetch current ELO for all real players
+    const userIds = realSeats.map(s => session.seatToUserId[s]);
     const users = await prisma.user.findMany({
       where: { id: { in: userIds } },
       select: { id: true, elo: true },
@@ -415,7 +444,7 @@ export class GameManager {
           piedrasCount: state.seriePiedrasIniciales,
           startedAt: session.startTime,
           players: {
-            create: seats.map(seat => {
+            create: realSeats.map(seat => {
               const uid = session.seatToUserId[seat];
               const stats = session.seriesStats[seat];
               return {

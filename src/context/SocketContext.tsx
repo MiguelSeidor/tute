@@ -16,11 +16,9 @@ export interface ChatMessage {
   timestamp: number;
 }
 
-export interface CeremonyData {
-  suitAssignments: Record<Seat, Palo>;
-  card: Card;
-  dealer: Seat;
-}
+import type { AnyCeremonyData } from '../engine/ceremonySorteo';
+
+export type { AnyCeremonyData };
 
 interface SocketContextType {
   connected: boolean;
@@ -29,11 +27,11 @@ interface SocketContextType {
   gameState: GameStateView | null;
   gameStarted: boolean;
   phraseEvent: PhraseEvent | null;
-  ceremonyData: CeremonyData | null;
+  ceremonyData: AnyCeremonyData | null;
   clearCeremony: () => void;
   dealingDealer: Seat | null;
   clearDealing: () => void;
-  createRoom: (name: string, piedras: 3 | 5) => Promise<string>;
+  createRoom: (name: string, piedras: 3 | 5, maxPlayers?: 3 | 4) => Promise<string>;
   joinRoom: (roomId: string) => Promise<void>;
   leaveRoom: () => Promise<void>;
   setReady: (ready: boolean) => void;
@@ -93,7 +91,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socket.on('room:list', (rooms: RoomListItem[]) => setRoomList(rooms));
     socket.on('game:state', (view: GameStateView) => setGameState(view));
     socket.on('game:started', () => { setGameStarted(true); setChatMessages([]); });
-    socket.on('game:ceremony', (data: CeremonyData) => setCeremonyData(data));
+    socket.on('game:ceremony', (data: AnyCeremonyData) => setCeremonyData(data));
     socket.on('game:dealing', (data: { dealer: Seat }) => setDealingDealer(data.dealer));
     socket.on('game:phrase', (data: PhraseEvent) => setPhraseEvent(data));
     socket.on('game:chat', (data: { seat: Seat; texto: string }) => {
@@ -114,12 +112,12 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user]);
 
-  const createRoom = useCallback(async (name: string, piedras: 3 | 5): Promise<string> => {
+  const createRoom = useCallback(async (name: string, piedras: 3 | 5, maxPlayers: 3 | 4 = 4): Promise<string> => {
     const socket = socketRef.current;
     if (!socket) throw new Error('Socket no conectado');
 
     return new Promise((resolve, reject) => {
-      socket.emit('room:create', { name, piedras }, (res: any) => {
+      socket.emit('room:create', { name, piedras, maxPlayers }, (res: any) => {
         if (res.success) resolve(res.roomId);
         else reject(new Error(res.error));
       });

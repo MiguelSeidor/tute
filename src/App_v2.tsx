@@ -27,6 +27,223 @@ import "./ui/game.css";
 
 type GameMode = "offline" | "online" | "stats" | null;
 
+// === Components defined OUTSIDE App_v2 so React keeps stable type references ===
+
+function OverlayDecision({ visible, onYes, onNo }: { visible: boolean; onYes: () => void; onNo: () => void }) {
+  if (!visible) return null;
+  return (
+    <div style={{
+      position: "absolute", inset: 0, display: "flex",
+      justifyContent: "center", alignItems: "center", zIndex: 99999,
+    }}>
+      <div style={{
+        background: "rgba(19, 56, 31, 0.7)", backdropFilter: "blur(6px)",
+        padding: "clamp(14px, 3vw, 24px) clamp(18px, 4vw, 35px)", borderRadius: 12,
+        border: "1px solid rgba(255,255,255,0.25)", boxShadow: "0 4px 30px rgba(0,0,0,0.3)",
+        textAlign: "center", color: "#fff",
+      }}>
+        <h3 style={{ marginTop: 0, marginBottom: 14, fontSize: "clamp(1rem, 3.5vw, 1.25rem)" }}>¿Quieres ir a los dos?</h3>
+        <div style={{ display: "flex", justifyContent: "center", gap: 16 }}>
+          <button style={{
+            padding: "10px 24px", fontSize: "clamp(14px, 3vw, 18px)", borderRadius: 8, fontWeight: 700,
+            background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", cursor: "pointer",
+          }} onClick={onYes}>Sí</button>
+          <button style={{
+            padding: "10px 24px", fontSize: "clamp(14px, 3vw, 18px)", borderRadius: 8, fontWeight: 700,
+            background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", cursor: "pointer",
+          }} onClick={onNo}>No</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlayerBox({
+  seat,
+  game,
+  send,
+  revealAll,
+  hideHand = false,
+  lastAction,
+  isMyTurn,
+  isLegalCard,
+}: {
+  seat: Seat;
+  game: GameState;
+  send: (ev: GameEvent) => void;
+  revealAll?: boolean;
+  hideHand?: boolean;
+  lastAction: string;
+  isMyTurn: boolean;
+  isLegalCard: (c: Card) => boolean;
+}) {
+  const dealer = game.dealer;
+  const isDealer = dealer === seat;
+  const mano = game.jugadores[seat].mano;
+  const activos = game.activos;
+
+  const isEliminated = (game.eliminados ?? []).includes(seat);
+
+  return (
+    <div style={{ textAlign: "center", minWidth: 'clamp(60px, 18vw, 200px)' }}>
+      <div className={`playerHeaderLine${game.irADos === seat ? ' playerHeaderLine--solo' : ''}`}>
+        <span>J{seat + 1}</span>
+        <span className={`badge ${game.perdedores.includes(seat) ? 'badge--loser' : ''}`}
+          style={game.perdedores.includes(seat) ? { background: 'rgba(255,60,60,0.3)', borderColor: 'rgba(255,60,60,0.6)', color: '#ff6b6b' } : {}}>
+          {game.jugadores[seat].puntos} pts
+        </span>
+        {isDealer && <span className="badge badge--dealer">🎴</span>}
+        {game.irADos === seat && <span className="badge badge--solo">Solo</span>}
+        {isEliminated && <span className="badge badge--eliminated">Eliminado</span>}
+        {!activos.includes(seat) && !isDealer && !isEliminated && (
+          <span style={{ opacity: 0.7, fontSize: '0.75em' }}>(No juega)</span>
+        )}
+      </div>
+      <div className="piedras-dots" style={{
+        opacity: isEliminated ? 0.4 : 1, lineHeight: 1,
+        display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap',
+      }}>
+        {game.piedras[seat] > 0
+          ? Array.from({ length: Math.min(game.piedras[seat], 12) }).map((_, i) => (
+              <img key={i} src="/cartas/piedra.png" alt="piedra" style={{ width: 'clamp(10px, 2.5vw, 16px)', height: 'auto' }} />
+            ))
+          : <span style={{ color: '#ff6b6b', fontSize: 'clamp(8px, 2vw, 11px)' }}>✕</span>}
+      </div>
+
+      <div className="playerActionLine">
+        {lastAction || ""}
+      </div>
+
+      {seat === 0 && (
+        <div style={{
+          marginTop: 4, padding: '2px 10px', borderRadius: 999, display: 'inline-block',
+          fontSize: '0.75rem', fontWeight: 700,
+          visibility: isMyTurn ? 'visible' : 'hidden',
+          background: 'rgba(255,220,60,0.2)', border: '1px solid rgba(255,220,60,0.4)', color: '#ffd740',
+        }}>
+          ⏳ Tu turno
+        </div>
+      )}
+
+      {!hideHand && (
+        <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap" }}>
+          <HandRow
+            seat={seat}
+            cards={mano as Card[]}
+            interactive={
+              seat === 0 &&
+              game.status === "jugando" &&
+              game.turno === 0 &&
+              game.activos.includes(0 as Seat)
+            }
+            isLegalCard={isLegalCard}
+            onPlay={(c) => {
+              if (!isLegalCard(c)) return;
+              send({ type: "jugarCarta", seat: 0, card: c });
+            }}
+            revealAll={!!revealAll}
+            isTurn={isMyTurn}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// HandRow con auto-escala para encajar SIEMPRE 9 slots en UNA sola línea para J1.
+// - Para J1 (seat===0): sin wrap + escala dinámica + 9 slots (los vacíos son placeholders invisibles).
+// - Para el resto: comportamiento anterior (wrap), sin escala.
+function HandRow({
+  seat,
+  cards,
+  interactive = false,
+  onPlay,
+  isLegalCard,
+  revealAll = false,
+  isTurn = false,
+}: {
+  seat: Seat;
+  cards: Card[];
+  interactive?: boolean;
+  onPlay?: (c: Card) => void;
+  isLegalCard?: (c: Card) => boolean;
+  revealAll?: boolean;
+  isTurn?: boolean;
+}) {
+  const isMe = seat === (0 as Seat);
+
+  // Auto-scale for J1 hand (same approach as online)
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = React.useState(1);
+
+  React.useLayoutEffect(() => {
+    if (!isMe) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const containerW = el.clientWidth || 0;
+    const inner = el.firstElementChild as HTMLElement | null;
+    if (!inner) return;
+    const scrollW = inner.scrollWidth;
+    const s = containerW > 0 && scrollW > containerW ? containerW / scrollW : 1;
+    setScale(Math.max(0.85, s));
+  }, [isMe, cards.length]);
+
+  if (isMe) {
+    // === J1: solo cartas reales, gap responsive, auto-escala (como online) ===
+    return (
+      <div ref={containerRef} className={`handRow${isTurn ? ' playerBox--turn' : ''}`} style={{ overflow: "hidden", minHeight: "var(--card-h)" }}>
+        <div style={{
+          display: "flex", justifyContent: "center", flexWrap: "nowrap",
+          gap: "clamp(2px, 1vw, 6px)",
+          transform: scale < 1 ? `scale(${scale})` : undefined,
+          transformOrigin: "center bottom",
+        }}>
+          {cards.length === 0 ? (
+            <span style={{ opacity: 0.5, alignSelf: "center" }}>Sin cartas</span>
+          ) : cards.map((card) => {
+            const legal = interactive && (isLegalCard ? isLegalCard(card) : true);
+            return (
+              <Carta
+                key={`${card.palo}-${card.num}`}
+                carta={card}
+                legal={legal}
+                onClick={() => legal && onPlay?.(card)}
+              />
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // === NPCs: overlapping fan, cards shrink to fit ===
+  return (
+    <div style={{ display: "flex", justifyContent: "center", minHeight: "calc(var(--npc-card-w) * 1.45)" }}>
+      <div className="npc-card-fan">
+        {cards.map((card, i) => {
+          if (revealAll) {
+            return (
+              <Carta
+                key={i}
+                carta={card}
+                legal={false}
+                style={{ width: "var(--npc-card-w)", margin: 0 }}
+              />
+            );
+          }
+          return (
+            <Carta
+              key={i}
+              tapada
+              style={{ width: "var(--npc-card-w)", margin: 0 }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // Componente separado para el modo online (necesita useAuth y useSocket hooks)
 function OnlineScreen({ onBack }: { onBack: () => void }) {
   const { user, loading } = useAuth();
@@ -743,217 +960,8 @@ export default function App_v2() {
 
   // Helpers UI
   const turno = game.turno;
-
-  function OverlayDecision({ visible, onYes, onNo }: { visible: boolean; onYes: () => void; onNo: () => void }) {
-    if (!visible) return null;
-    return (
-      <div style={{
-        position: "absolute", inset: 0, display: "flex",
-        justifyContent: "center", alignItems: "center", zIndex: 99999,
-      }}>
-        <div style={{
-          background: "rgba(19, 56, 31, 0.7)", backdropFilter: "blur(6px)",
-          padding: "clamp(14px, 3vw, 24px) clamp(18px, 4vw, 35px)", borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.25)", boxShadow: "0 4px 30px rgba(0,0,0,0.3)",
-          textAlign: "center", color: "#fff",
-        }}>
-          <h3 style={{ marginTop: 0, marginBottom: 14, fontSize: "clamp(1rem, 3.5vw, 1.25rem)" }}>¿Quieres ir a los dos?</h3>
-          <div style={{ display: "flex", justifyContent: "center", gap: 16 }}>
-            <button style={{
-              padding: "10px 24px", fontSize: "clamp(14px, 3vw, 18px)", borderRadius: 8, fontWeight: 700,
-              background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", cursor: "pointer",
-            }} onClick={onYes}>Sí</button>
-            <button style={{
-              padding: "10px 24px", fontSize: "clamp(14px, 3vw, 18px)", borderRadius: 8, fontWeight: 700,
-              background: "rgba(255,255,255,0.15)", color: "#fff", border: "1px solid rgba(255,255,255,0.3)", cursor: "pointer",
-            }} onClick={onNo}>No</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // --- PlayerBox: renderiza las cartas y el título de cada seat ---
-  // IMPORTA los tipos arriba si no los tienes
-  // import type { Seat, GameState, GameEvent, Card } from "./engine/tuteTypes";
-
-  // --- PlayerBox: renderiza las cartas y el título de cada seat ---
-  function PlayerBox({
-    seat,
-    game,
-    send,
-    revealAll,
-    hideHand = false,
-  }: {
-    seat: Seat;
-    game: GameState;
-    send: (ev: GameEvent) => void;
-    revealAll?: boolean;
-    hideHand?: boolean;
-  }) {
-    const dealer = game.dealer;
-    const isDealer = dealer === seat;
-    const mano = game.jugadores[seat].mano;
-    const activos = game.activos;
-
-    const isEliminated = (game.eliminados ?? []).includes(seat);
-
-    return (
-      <div style={{ textAlign: "center", minWidth: 'clamp(60px, 18vw, 200px)' }}>
-        <div className={`playerHeaderLine${game.irADos === seat ? ' playerHeaderLine--solo' : ''}`}>
-          <span>J{seat + 1}</span>
-          <span className={`badge ${game.perdedores.includes(seat) ? 'badge--loser' : ''}`}
-            style={game.perdedores.includes(seat) ? { background: 'rgba(255,60,60,0.3)', borderColor: 'rgba(255,60,60,0.6)', color: '#ff6b6b' } : {}}>
-            {game.jugadores[seat].puntos} pts
-          </span>
-          {isDealer && <span className="badge badge--dealer">🎴</span>}
-          {game.irADos === seat && <span className="badge badge--solo">Solo</span>}
-          {isEliminated && <span className="badge badge--eliminated">Eliminado</span>}
-          {!activos.includes(seat) && !isDealer && !isEliminated && (
-            <span style={{ opacity: 0.7, fontSize: '0.75em' }}>(No juega)</span>
-          )}
-        </div>
-        <div className="piedras-dots" style={{
-          opacity: isEliminated ? 0.4 : 1, lineHeight: 1,
-          display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap',
-        }}>
-          {game.piedras[seat] > 0
-            ? Array.from({ length: Math.min(game.piedras[seat], 12) }).map((_, i) => (
-                <img key={i} src="/cartas/piedra.png" alt="piedra" style={{ width: 'clamp(10px, 2.5vw, 16px)', height: 'auto' }} />
-              ))
-            : <span style={{ color: '#ff6b6b', fontSize: 'clamp(8px, 2vw, 11px)' }}>✕</span>}
-        </div>
-
-        <div className="playerActionLine">
-          {lastActionBySeat[seat] || ""} {/* ✅ ahora seat es Seat, no any */}
-        </div>
-
-        {seat === 0 && (
-          <div style={{
-            marginTop: 4, padding: '2px 10px', borderRadius: 999, display: 'inline-block',
-            fontSize: '0.75rem', fontWeight: 700,
-            visibility: game.turno === 0 && game.status === 'jugando' ? 'visible' : 'hidden',
-            background: 'rgba(255,220,60,0.2)', border: '1px solid rgba(255,220,60,0.4)', color: '#ffd740',
-          }}>
-            ⏳ Tu turno
-          </div>
-        )}
-
-        {!hideHand && (
-          <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap" }}>
-            <HandRow
-              seat={seat}
-              cards={mano as Card[]}
-              interactive={
-                seat === 0 &&
-                game.status === "jugando" &&
-                game.turno === 0 &&
-                game.activos.includes(0 as Seat)
-              }
-              isLegalCard={(card) => isLegalCardForJ1(game, card)}
-              onPlay={(c) => {
-                if (!isLegalCardForJ1(game, c)) return;
-                send({ type: "jugarCarta", seat: 0, card: c });
-              }}
-              revealAll={!!revealAll}
-            />
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // HandRow con auto-escala para encajar SIEMPRE 9 slots en UNA sola línea para J1.
-  // - Para J1 (seat===0): sin wrap + escala dinámica + 9 slots (los vacíos son placeholders invisibles).
-  // - Para el resto: comportamiento anterior (wrap), sin escala.
-  function HandRow({
-  seat,
-  cards,
-  interactive = false,
-  onPlay,
-  isLegalCard,
-  revealAll = false,
-  }: {
-    seat: Seat;
-    cards: Card[];
-    interactive?: boolean;
-    onPlay?: (c: Card) => void;
-    isLegalCard?: (c: Card) => boolean;
-    revealAll?: boolean;               // ⬅️ NUEVO
-  }) {
-    const isMe = seat === (0 as Seat);
-
-    // Auto-scale for J1 hand (same approach as online)
-    const containerRef = React.useRef<HTMLDivElement | null>(null);
-    const [scale, setScale] = React.useState(1);
-
-    React.useLayoutEffect(() => {
-      if (!isMe) return;
-      const el = containerRef.current;
-      if (!el) return;
-      const containerW = el.clientWidth || 0;
-      const inner = el.firstElementChild as HTMLElement | null;
-      if (!inner) return;
-      const scrollW = inner.scrollWidth;
-      const s = containerW > 0 && scrollW > containerW ? containerW / scrollW : 1;
-      setScale(Math.max(0.85, s));
-    }, [isMe, cards.length]);
-
-    if (isMe) {
-      // === J1: solo cartas reales, gap responsive, auto-escala (como online) ===
-      return (
-        <div ref={containerRef} className={`handRow${game.turno === 0 && game.status === "jugando" ? ' playerBox--turn' : ''}`} style={{ overflow: "hidden", minHeight: "var(--card-h)" }}>
-          <div style={{
-            display: "flex", justifyContent: "center", flexWrap: "nowrap",
-            gap: "clamp(2px, 1vw, 6px)",
-            transform: scale < 1 ? `scale(${scale})` : undefined,
-            transformOrigin: "center bottom",
-          }}>
-            {cards.length === 0 ? (
-              <span style={{ opacity: 0.5, alignSelf: "center" }}>Sin cartas</span>
-            ) : cards.map((card) => {
-              const legal = interactive && (isLegalCard ? isLegalCard(card) : true);
-              return (
-                <Carta
-                  key={`${card.palo}-${card.num}`}
-                  carta={card}
-                  legal={legal}
-                  onClick={() => legal && onPlay?.(card)}
-                />
-              );
-            })}
-          </div>
-        </div>
-      );
-    }
-
-    // === NPCs: overlapping fan, cards shrink to fit ===
-    return (
-      <div style={{ display: "flex", justifyContent: "center", minHeight: "calc(var(--npc-card-w) * 1.45)" }}>
-        <div className="npc-card-fan">
-          {cards.map((card, i) => {
-            if (revealAll) {
-              return (
-                <Carta
-                  key={i}
-                  carta={card}
-                  legal={false}
-                  style={{ width: "var(--npc-card-w)", margin: 0 }}
-                />
-              );
-            }
-            return (
-              <Carta
-                key={i}
-                tapada
-                style={{ width: "var(--npc-card-w)", margin: 0 }}
-              />
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
+  const isMyTurn = turno === 0 && game.status === 'jugando';
+  const legalCardCheck = (c: Card) => isLegalCardForJ1(game, c);
 
   // === Tipos auxiliares de cantes
   type CanteOpt = { palo: Palo; puntos: 20 | 40 };
@@ -1507,7 +1515,7 @@ export default function App_v2() {
                   </div>
                 );
               })()}
-              {!hidePlayerBoxes && !(game.emptySeat === 2) && <PlayerBox seat={2} game={game} send={send} revealAll={modoDestapado}/>}
+              {!hidePlayerBoxes && !(game.emptySeat === 2) && <PlayerBox seat={2} game={game} send={send} revealAll={modoDestapado} lastAction={lastActionBySeat[2]} isMyTurn={isMyTurn} isLegalCard={legalCardCheck}/>}
               {bocadillos[2] && (
                 <div className="bocadillo bocadillo--above" key={bocadillos[2].key}>{bocadillos[2].texto}</div>
               )}
@@ -1525,7 +1533,7 @@ export default function App_v2() {
                   </div>
                 );
               })()}
-              {!hidePlayerBoxes && !(game.emptySeat === 1) && <PlayerBox seat={1} game={game} send={send} revealAll={modoDestapado}/>}
+              {!hidePlayerBoxes && !(game.emptySeat === 1) && <PlayerBox seat={1} game={game} send={send} revealAll={modoDestapado} lastAction={lastActionBySeat[1]} isMyTurn={isMyTurn} isLegalCard={legalCardCheck}/>}
               {bocadillos[1] && (
                 <div className="bocadillo bocadillo--above" key={bocadillos[1].key}>{bocadillos[1].texto}</div>
               )}
@@ -1796,7 +1804,7 @@ export default function App_v2() {
                   </div>
                 );
               })()}
-              {!hidePlayerBoxes && !(game.emptySeat === 3) && <PlayerBox seat={3} game={game} send={send} revealAll={modoDestapado}/>}
+              {!hidePlayerBoxes && !(game.emptySeat === 3) && <PlayerBox seat={3} game={game} send={send} revealAll={modoDestapado} lastAction={lastActionBySeat[3]} isMyTurn={isMyTurn} isLegalCard={legalCardCheck}/>}
               {bocadillos[3] && (
                 <div className="bocadillo bocadillo--above" key={bocadillos[3].key}>{bocadillos[3].texto}</div>
               )}
@@ -1814,7 +1822,7 @@ export default function App_v2() {
                   </div>
                 );
               })()}
-              {!hidePlayerBoxes && <PlayerBox seat={0} game={game} send={send} revealAll={modoDestapado} hideHand/>}
+              {!hidePlayerBoxes && <PlayerBox seat={0} game={game} send={send} revealAll={modoDestapado} hideHand lastAction={lastActionBySeat[0]} isMyTurn={isMyTurn} isLegalCard={legalCardCheck}/>}
               {bocadillos[0] && (
                 <div className="bocadillo bocadillo--below" key={bocadillos[0].key}>{bocadillos[0].texto}</div>
               )}
@@ -1831,12 +1839,13 @@ export default function App_v2() {
                 game.turno === 0 &&
                 game.activos.includes(0 as Seat)
               }
-              isLegalCard={(card) => isLegalCardForJ1(game, card)}
+              isLegalCard={legalCardCheck}
               onPlay={(c) => {
-                if (!isLegalCardForJ1(game, c)) return;
+                if (!legalCardCheck(c)) return;
                 send({ type: "jugarCarta", seat: 0, card: c });
               }}
               revealAll={!!modoDestapado}
+              isTurn={isMyTurn}
             />
           </div>
 
@@ -1952,25 +1961,14 @@ export default function App_v2() {
             setGame(initGame(5, freshDealer));
             setShowPlayersChoice(true);
           } else {
-            // REO: avanzamos el salidor en sentido horario (saltando eliminados),
-            // luego el dealer es el vivo justo antes del salidor.
+            // REO: avanzamos el dealer en sentido horario (saltando eliminados).
+            // startRound se encargará de calcular el salidor a partir del dealer.
             const CLOCKWISE: Seat[] = [0, 3, 2, 1];
             const eliminados = game.eliminados ?? [];
-            // Salidor actual → avanzar 1 posición clockwise, saltando eliminados
-            const salidorIdx = CLOCKWISE.indexOf(game.salidor);
-            let nextSalidor = game.salidor;
+            const dealerIdx = CLOCKWISE.indexOf(game.dealer);
+            let nextDealer = game.dealer;
             for (let i = 1; i <= 4; i++) {
-              const candidate = CLOCKWISE[(salidorIdx + i) % CLOCKWISE.length];
-              if (!eliminados.includes(candidate)) {
-                nextSalidor = candidate;
-                break;
-              }
-            }
-            // Dealer = vivo justo antes del salidor (counter-clockwise)
-            const nextSalidorIdx = CLOCKWISE.indexOf(nextSalidor);
-            let nextDealer = nextSalidor;
-            for (let i = 1; i <= 4; i++) {
-              const candidate = CLOCKWISE[(nextSalidorIdx - i + 4) % CLOCKWISE.length];
+              const candidate = CLOCKWISE[(dealerIdx + i) % CLOCKWISE.length];
               if (!eliminados.includes(candidate)) {
                 nextDealer = candidate;
                 break;

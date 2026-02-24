@@ -17,6 +17,43 @@ body {
 }
 #root { max-width: none; padding: 0; width: 100%; }
 
+/* ── Mode selection screen ── */
+.mode-screen {
+  min-height: 100svh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  padding: 24px;
+  box-sizing: border-box;
+}
+.mode-btn {
+  padding: 24px 48px;
+  font-size: clamp(1rem, 2.5vw, 1.3rem);
+  font-weight: 700;
+  border-radius: 14px;
+  border: 2px solid rgba(255,255,255,.3);
+  background: rgba(255,255,255,.12);
+  color: #fff;
+  cursor: pointer;
+  transition: background .2s, transform .15s;
+  min-width: min(220px, 40vw);
+  text-align: center;
+}
+.mode-btn:hover { background: rgba(255,255,255,.25); transform: scale(1.04); }
+.mode-btn:active { transform: scale(0.98); }
+
+/* ── Offline game layout ── */
+.page {
+  min-height: 100svh; display: flex; flex-direction: column; gap: 8px;
+  padding: 8px; box-sizing: border-box; max-width: 1200px; margin: 0 auto; color: #fff;
+}
+.board { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.headerBar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.playerActionLine { font-size: 12px; opacity: .85; min-height: 16px; }
+
 /* ── Badge ── */
 .badge {
   display: inline-flex;
@@ -265,6 +302,10 @@ body {
   50%  { opacity: 1; transform: translate(-50%, -50%) rotateY(0deg) scale(1.1); }
   100% { opacity: 1; transform: translate(-50%, -50%) rotateY(0deg) scale(1); }
 }
+@keyframes cer-slide {
+  0%   { transform: translate(-50%, -50%); opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--cer-slide-x)), calc(-50% + var(--cer-slide-y))); opacity: 0.2; }
+}
 @keyframes cer-deal-fly {
   from { opacity: 1; transform: translate(var(--deal-ox, 0px), var(--deal-oy, 0px)) scale(0.8); }
   to   { opacity: 0; transform: translate(var(--deal-tx), var(--deal-ty)) scale(0.4); }
@@ -348,6 +389,25 @@ body {
   animation: cer-deal-fly 500ms ease-in both;
 }
 
+/* ── Online game layout ── */
+.og-page {
+  min-height: 100svh; display: flex; flex-direction: column; gap: 8px;
+  padding: 8px; box-sizing: border-box; max-width: 1200px; margin: 0 auto; color: #fff;
+}
+.og-board { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+/* Constant border/padding prevents layout shift when playerBox--turn toggles */
+.og-hand-container {
+  border: 2px solid transparent;
+  border-radius: 10px;
+  padding: 4px 6px;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+.og-hand-container.playerBox--turn {
+  border-color: rgba(255,220,60,0.6);
+  box-shadow: 0 0 10px rgba(255,220,60,0.3);
+  animation: turn-pulse 1.5s ease-in-out infinite;
+}
+
 /* ── Chat bar ── */
 .chat-input-row {
   display: flex;
@@ -418,6 +478,12 @@ body {
   .resumen-footer { gap: 10px; }
   .chat-input, .chat-phrase-select, .chat-send-btn { font-size: 12px; }
   .chat-input-row { max-width: 280px; }
+  .og-page { font-size: 13px; }
+  .og-board { gap: 4px; }
+  .og-hand-container img { margin: 2px !important; }
+  .page { padding: 8px; gap: 8px; font-size: 13px; }
+  .board { gap: 4px; }
+  .handRow img { margin: 2px !important; }
 }
 @media (max-width: 430px) {
   :root {
@@ -442,4 +508,8 @@ body {
   .chat-input, .chat-send-btn { font-size: 11px; padding: 3px 6px; }
   .chat-phrase-select { font-size: 11px; padding: 3px 0px; }
   .chat-input-row { max-width: 250px; }
+  .og-page { padding: 4px; gap: 4px; font-size: 12px; min-height: auto; }
+  .og-hand-container img { margin: 0px !important; }
+  .page { padding: 4px; gap: 4px; font-size: 12px; min-height: auto; }
+  .handRow img { margin: 0px !important; }
 }

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import { Carta, MesaVisual } from '../ui/Primitives';
@@ -182,8 +182,8 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
     lastChatLenRef.current = chatMessages.length;
   }, [chatMessages.length]);
 
-  // Auto-scale hand to fit container
-  useEffect(() => {
+  // Auto-scale hand to fit container (useLayoutEffect to avoid flash of wrong scale)
+  useLayoutEffect(() => {
     recalcHandScale();
     window.addEventListener('resize', recalcHandScale);
     return () => window.removeEventListener('resize', recalcHandScale);
@@ -253,32 +253,13 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
 
   return (
     <>
-      {/* CSS específico de layout online (el compartido está en game.css) */}
-      <style>{`
-        .og-page {
-          min-height: 100svh; display: flex; flex-direction: column; gap: 8px;
-          padding: 8px; box-sizing: border-box; max-width: 1200px; margin: 0 auto; color: #fff;
-        }
-        .og-board { display: flex; flex-direction: column; gap: 8px; flex: 1; }
-        .og-hand-container img { transition: margin 0.2s; }
-        @media (max-width: 600px) {
-          .og-page { font-size: 13px; }
-          .og-board { gap: 4px; }
-          .og-hand-container img { margin: 2px !important; }
-        }
-        @media (max-width: 430px) {
-          .og-page { padding: 4px; gap: 4px; font-size: 12px; min-height: auto; }
-          .og-hand-container img { margin: 0px !important; }
-        }
-      `}</style>
-
       <div className="og-page">
         <div className="og-board">
           {/* Header compacto */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {gs.triunfo && !hideCards && (
-                <Carta carta={gs.triunfo} legal={false} style={{ width: 'clamp(28px, 6vw, 40px)', margin: 0, flexShrink: 0 }} />
+              {gs.triunfo && (
+                <Carta carta={gs.triunfo} legal={false} style={{ width: 'clamp(28px, 6vw, 40px)', margin: 0, flexShrink: 0, visibility: hideCards ? 'hidden' : 'visible' }} />
               )}
               <div>
                 <div style={{ fontSize: 'clamp(0.7rem, 2.5vw, 0.85rem)', opacity: 0.7 }}>
@@ -330,11 +311,7 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
             display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr)', gridTemplateRows: 'auto auto auto',
             gap: 'clamp(2px, 1vw, 8px)', alignItems: 'center', justifyItems: 'center',
           }}>
-            {/* Dynamic ceremony slide animation */}
-            {cer4p && (() => {
-              const dir = DEAL_DIRECTION[cerPhase.dealerSlot];
-              return <style>{`@keyframes cer-slide { 0% { transform: translate(-50%,-50%); opacity: 1; } 100% { transform: translate(calc(-50% + ${dir.x}), calc(-50% + ${dir.y})); opacity: 0.2; } }`}</style>;
-            })()}
+            {/* Dynamic ceremony slide animation uses CSS custom properties --cer-slide-x/y */}
 
             {/* Top player */}
             <div style={{ gridColumn: '2', gridRow: '1', position: 'relative' }}>
@@ -401,7 +378,11 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
               )}
               {cer4p && cerPhase.phase === 'card_slide' && (
                 <div className="cer-card-center">
-                  <img className="cer-card-img" style={{ animation: 'cer-slide 1.2s ease-in-out both' }}
+                  <img className="cer-card-img" style={{
+                    animation: 'cer-slide 1.2s ease-in-out both',
+                    '--cer-slide-x': DEAL_DIRECTION[cerPhase.dealerSlot].x,
+                    '--cer-slide-y': DEAL_DIRECTION[cerPhase.dealerSlot].y,
+                  } as React.CSSProperties}
                     src={`/cartas/${cer4p.card.palo}_${cer4p.card.num}.png`}
                     alt={`${cer4p.card.num} de ${cer4p.card.palo}`} />
                   <div className="cer-dealer-label">¡{gs.playerNames[cer4p.dealer]} da!</div>
@@ -537,27 +518,26 @@ export function OnlineGameScreen({ onLeave }: { onLeave: () => void }) {
             </div>
           </div>
 
-          {/* My hand — hidden during ceremony/dealing */}
-          {!hideCards && (
-            <div className={`og-hand-container${isMyTurn ? ' playerBox--turn' : ''}`} style={{ overflow: 'hidden', minHeight: 'var(--card-h)' }}>
-              <div ref={handRef} style={{
-                display: 'flex', justifyContent: 'center', flexWrap: 'nowrap',
-                gap: 'clamp(2px, 1vw, 6px)',
-                transform: handScale < 1 ? `scale(${handScale})` : undefined,
-                transformOrigin: 'center bottom',
-              }}>
-                {gs.myHand.length === 0 ? (
-                  <span style={{ opacity: 0.5, alignSelf: 'center' }}>Sin cartas</span>
-                ) : gs.myHand.map(card => {
-                  const legal = isLegal(card);
-                  return (
-                    <Carta key={`${card.palo}-${card.num}`} carta={card} legal={legal}
-                      onClick={() => { if (legal) handleAction({ type: 'jugarCarta', seat: mySeat, card }); }} />
-                  );
-                })}
-              </div>
+          {/* My hand — hidden during ceremony/dealing via visibility to avoid layout flicker */}
+          <div className={`og-hand-container${isMyTurn && !hideCards ? ' playerBox--turn' : ''}`}
+            style={{ overflow: 'hidden', minHeight: 'var(--card-h)', visibility: hideCards ? 'hidden' : 'visible' }}>
+            <div ref={handRef} style={{
+              display: 'flex', justifyContent: 'center', flexWrap: 'nowrap',
+              gap: 'clamp(2px, 1vw, 6px)',
+              transform: handScale < 1 ? `scale(${handScale})` : undefined,
+              transformOrigin: 'center bottom',
+            }}>
+              {gs.myHand.length === 0 ? (
+                <span style={{ opacity: 0.5, alignSelf: 'center' }}>Sin cartas</span>
+              ) : gs.myHand.map(card => {
+                const legal = isLegal(card);
+                return (
+                  <Carta key={`${card.palo}-${card.num}`} carta={card} legal={legal}
+                    onClick={() => { if (legal) handleAction({ type: 'jugarCarta', seat: mySeat, card }); }} />
+                );
+              })}
             </div>
-          )}
+          </div>
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -687,8 +667,8 @@ function OnlinePlayerBox({ gs, seat, mySeat, hideCards = false }: { gs: GameStat
           : <span style={{ color: '#ff6b6b', fontSize: 'clamp(8px, 2vw, 11px)' }}>✕</span>}
       </div>
 
-      {!isMe && isActive && !hideCards && (
-        <div style={{ display: 'flex', justifyContent: 'center', minHeight: 'calc(var(--npc-card-w) * 1.45)' }}>
+      {!isMe && isActive && (
+        <div style={{ display: 'flex', justifyContent: 'center', minHeight: 'calc(var(--npc-card-w) * 1.45)', visibility: hideCards ? 'hidden' : 'visible' }}>
           <div className="npc-card-fan">
             {Array.from({ length: cardCount }).map((_, i) => (
               <Carta key={i} tapada style={{ width: 'var(--npc-card-w)', margin: 0, borderRadius: 4 }} />

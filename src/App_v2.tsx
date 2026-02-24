@@ -35,8 +35,7 @@ function OnlineScreen({ bodyStyle, onBack }: { bodyStyle: string; onBack: () => 
   if (loading) {
     return (
       <>
-        <style>{bodyStyle}</style>
-        <div className="mode-screen" style={{ gap: 24 }}>
+                <div className="mode-screen" style={{ gap: 24 }}>
           <p style={{ fontSize: "1.2rem", opacity: 0.8 }}>Cargando...</p>
         </div>
       </>
@@ -46,8 +45,7 @@ function OnlineScreen({ bodyStyle, onBack }: { bodyStyle: string; onBack: () => 
   if (!user) {
     return (
       <>
-        <style>{bodyStyle}</style>
-        <AuthForm onBack={onBack} />
+                <AuthForm onBack={onBack} />
       </>
     );
   }
@@ -60,8 +58,7 @@ function OnlineScreen({ bodyStyle, onBack }: { bodyStyle: string; onBack: () => 
   // Lobby
   return (
     <>
-      <style>{bodyStyle}</style>
-      <LobbyScreen onBack={onBack} />
+            <LobbyScreen onBack={onBack} />
     </>
   );
 }
@@ -1338,57 +1335,12 @@ export default function App_v2() {
 
 
   // ========================== SHARED BODY STYLES ==========================
-  const bodyStyle = `
-    body {
-      margin: 0;
-      background: radial-gradient(1400px 900px at 20% 10%, #2e7d32 0%, #1b5e20 60%, #0f3f14 100%);
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
-    }
-    #root {
-      max-width: none;
-      padding: 0;
-      width: 100%;
-    }
-    .mode-screen {
-      min-height: 100svh;
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      color: #fff;
-      padding: 24px;
-      box-sizing: border-box;
-    }
-    .mode-btn {
-      padding: 24px 48px;
-      font-size: clamp(1rem, 2.5vw, 1.3rem);
-      font-weight: 700;
-      border-radius: 14;
-      border: 2px solid rgba(255,255,255,.3);
-      background: rgba(255,255,255,.12);
-      color: #fff;
-      cursor: pointer;
-      transition: background .2s, transform .15s;
-      min-width: min(220px, 40vw);
-      text-align: center;
-      border-radius: 14px;
-    }
-    .mode-btn:hover {
-      background: rgba(255,255,255,.25);
-      transform: scale(1.04);
-    }
-    .mode-btn:active {
-      transform: scale(0.98);
-    }
-  `;
 
   // ========================== MODE SELECTION ==========================
   if (gameMode === null) {
     return (
       <>
-        <style>{bodyStyle}</style>
-        <div className="mode-screen" style={{ gap: 32 }}>
+                <div className="mode-screen" style={{ gap: 32 }}>
           <h1 style={{ fontSize: "clamp(2.2rem, 6vw, 4rem)", margin: 0, textShadow: "0 3px 12px rgba(0,0,0,.4)", textAlign: "center" }}>
             Tute Parrillano
           </h1>
@@ -1431,8 +1383,7 @@ export default function App_v2() {
   if (gameMode === "stats") {
     return (
       <>
-        <style>{bodyStyle}</style>
-        <StatsScreen onBack={() => setGameMode(null)} />
+                <StatsScreen onBack={() => setGameMode(null)} />
       </>
     );
   }
@@ -1440,28 +1391,7 @@ export default function App_v2() {
   // Render (Offline mode)
   return (
     <>
-      <style>{bodyStyle}</style>
-      {/* CSS específico de layout offline (el compartido está en game.css) */}
-      <style>{`
-        .page {
-          min-height: 100svh; display: flex; flex-direction: column; gap: 8px;
-          padding: 8px; box-sizing: border-box; max-width: 1200px; margin: 0 auto; color: #fff;
-        }
-        .board { display: flex; flex-direction: column; gap: 8px; flex: 1; }
-        .headerBar { display:flex; align-items:center; justify-content:space-between; gap: 8px; flex-wrap: wrap; }
-        .playerActionLine { font-size: 12px; opacity: .85; min-height: 16px; }
-        @media (max-width: 600px) {
-          .page { padding: 8px; gap: 8px; font-size: 13px; }
-          .board { gap: 4px; }
-          .handRow img { margin: 2px !important; }
-        }
-        @media (max-width: 430px) {
-          .page { padding: 4px; gap: 4px; font-size: 12px; min-height: auto; }
-          .handRow img { margin: 0px !important; }
-        }
-      `}</style>
-
-      <div className="page">
+            <div className="page">
         <div className="board">
 
           {/* Header compacto */}
@@ -1563,11 +1493,7 @@ export default function App_v2() {
               overflow: "visible",
             }}
           >
-            {/* Dynamic ceremony slide animation (depends on dealer direction) */}
-            {ceremony4p && (() => {
-              const dir = DEAL_DIRECTION[cerPhase.dealerSlot];
-              return <style>{`@keyframes cer-slide { 0% { transform: translate(-50%,-50%); opacity: 1; } 100% { transform: translate(calc(-50% + ${dir.x}), calc(-50% + ${dir.y})); opacity: 0.2; } }`}</style>;
-            })()}
+            {/* Dynamic ceremony slide animation uses CSS custom properties --cer-slide-x/y */}
 
             {/* J3 ARRIBA (seat 2) */}
             <div style={{ gridColumn: "2", gridRow: "1", position: "relative" }}>
@@ -1636,7 +1562,11 @@ export default function App_v2() {
                 <div className="cer-card-center">
                   <img
                     className="cer-card-img"
-                    style={{ animation: 'cer-slide 1.2s ease-in-out both' }}
+                    style={{
+                      animation: 'cer-slide 1.2s ease-in-out both',
+                      '--cer-slide-x': DEAL_DIRECTION[cerPhase.dealerSlot].x,
+                      '--cer-slide-y': DEAL_DIRECTION[cerPhase.dealerSlot].y,
+                    } as React.CSSProperties}
                     src={`/cartas/${ceremony4p.card.palo}_${ceremony4p.card.num}.png`}
                     alt={`${ceremony4p.card.num} de ${ceremony4p.card.palo}`}
                   />

@@ -208,21 +208,12 @@ export class GameManager {
 
     // Auto-start next round after finalizarReo (if series not over)
     if (event.type === 'finalizarReo' && !newState.serieTerminada) {
-      // Advance salidor clockwise (skipping eliminated), then dealer = alive player just before salidor
+      // Advance dealer clockwise (skipping eliminated). startRound computes salidor from dealer.
       const eliminados = newState.eliminados ?? [];
-      const salidorIdx = CLOCKWISE.indexOf(newState.salidor);
-      let nextSalidor = newState.salidor;
+      const dealerIdx = CLOCKWISE.indexOf(newState.dealer);
+      let nextDealer = newState.dealer;
       for (let i = 1; i <= 4; i++) {
-        const candidate = CLOCKWISE[(salidorIdx + i) % CLOCKWISE.length];
-        if (!eliminados.includes(candidate)) {
-          nextSalidor = candidate;
-          break;
-        }
-      }
-      const nextSalidorIdx = CLOCKWISE.indexOf(nextSalidor);
-      let nextDealer = nextSalidor;
-      for (let i = 1; i <= 4; i++) {
-        const candidate = CLOCKWISE[(nextSalidorIdx - i + 4) % CLOCKWISE.length];
+        const candidate = CLOCKWISE[(dealerIdx + i) % CLOCKWISE.length];
         if (!eliminados.includes(candidate)) {
           nextDealer = candidate;
           break;
